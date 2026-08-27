@@ -312,6 +312,11 @@ const i18n = {
     "ko-KR": "새로 만들지 않고 기존 프로젝트를 재사용했습니다.",
     "ja-JP": "新規作成せず既存プロジェクトを再利用しました。",
   },
+  needProjectToken: {
+    "en-US": "Enter the Railway project token. It is used from the PostgreSQL step onward, so the wizard cannot continue without it. Issue one in the project you just created: Railway project → Settings → Tokens.",
+    "ko-KR": "Railway 프로젝트 토큰을 입력하세요. PostgreSQL 단계부터 쓰이므로 없으면 더 진행할 수 없습니다. 방금 만든 프로젝트에서 발급하면 됩니다 — Railway 프로젝트 → Settings → Tokens.",
+    "ja-JP": "Railway プロジェクトトークンを入力してください。PostgreSQL ステップ以降で使用するため、無いと先に進めません。作成したプロジェクトで発行できます — Railway プロジェクト → Settings → Tokens。",
+  },
   needProjectId: {
     "en-US": "Run step 2 first so the project ID is filled in.",
     "ko-KR": "2단계를 먼저 실행해 프로젝트 ID 를 채우세요.",
@@ -471,9 +476,9 @@ const i18n = {
     "ja-JP": "10 分間ビルドの最終状態が得られず監視を停止しました。Railway でデプロイ状態を確認してください。",
   },
   projectTokenOptionalHint: {
-    "en-US": "Optional. Leave it blank to use the account token for every step. A project token exists only after the project does, so when creating a new project leave this blank, run the step, then come back and paste a token issued for the project that was just created.",
-    "ko-KR": "선택 입력입니다. 비워두면 모든 단계에서 Account 토큰을 씁니다. 프로젝트 토큰은 프로젝트가 만들어진 뒤에야 발급할 수 있으므로, 신규 생성이라면 비워둔 채로 이 단계를 실행하고 만들어진 프로젝트에서 토큰을 발급해 그때 넣으세요.",
-    "ja-JP": "任意です。空欄なら全ステップで Account トークンを使用します。プロジェクトトークンはプロジェクト作成後にのみ発行できるため、新規作成の場合は空欄のままこのステップを実行し、作成されたプロジェクトで発行したトークンを後から入力してください。",
+    "en-US": "Used from the PostgreSQL step onward, so it is required to finish the install. A project token exists only after the project does: run this step first to create the project, then issue a token in that project (Railway project → Settings → Tokens) and paste it here before moving on.",
+    "ko-KR": "PostgreSQL 단계부터 쓰이므로 설치를 마치려면 반드시 필요합니다. 프로젝트 토큰은 프로젝트가 만들어진 뒤에야 발급할 수 있으니, 이 단계를 먼저 실행해 프로젝트를 만들고 그 프로젝트에서 토큰을 발급해(Railway 프로젝트 → Settings → Tokens) 여기 넣은 뒤 다음으로 넘어가세요.",
+    "ja-JP": "PostgreSQL ステップ以降で使用するため、インストールを完了するには必須です。プロジェクトトークンはプロジェクト作成後にのみ発行できるので、まずこのステップを実行してプロジェクトを作成し、そのプロジェクトでトークンを発行して（Railway プロジェクト → Settings → Tokens）ここに入力してから次へ進んでください。",
   },
   prereqAllHere: {
     "en-US": "The three values below are used all the way to the last step. Enter them once here and the later steps read them from here instead of asking again.",
@@ -1528,6 +1533,20 @@ export default function RailwayDeployWizard() {
     const movingForward = nextIndex > active;
     const navBlockers = [...blockers];
     if (currentStep === "service" && !scaffoldDone) navBlockers.push(t("needScaffoldFirst"));
+    // 프로젝트 토큰은 3단계(PostgreSQL)부터 쓰인다. 없이 넘어가면 다음 단계가
+    // 계정 토큰으로 시도하다 권한에서 막히는데, 그때는 무엇이 빠졌는지 알기 어렵다.
+    //
+    // 다만 stepIssues 에 넣으면 안 된다. 그러면 2단계 "실행"까지 막혀 프로젝트를
+    // 만들 수 없고, 토큰은 프로젝트가 있어야 발급되므로 교착이 된다. 프로젝트를
+    // 만든 뒤 앞으로 나가려 할 때만 막는다.
+    if (
+      currentStep === "project" &&
+      movingForward &&
+      form.projectId &&
+      !String(form.projectToken || "").trim()
+    ) {
+      navBlockers.push(t("needProjectToken"));
+    }
     if (movingForward && navBlockers.length) {
       showResult("error", t("missingTitle"), navBlockers.join(LINE_BREAK));
       return;
@@ -2182,8 +2201,8 @@ export default function RailwayDeployWizard() {
                   </Field>
                   {/* 프로젝트 토큰은 프로젝트가 있어야 발급된다. 그래서 계정 토큰과 함께
                       1단계에서 묻지 않고, 프로젝트가 정해지는 이 단계에 둔다. */}
-                  <Field label={`${t("railwayProjectToken")} (${t("optional")})`} hint={t("projectTokenOptionalHint")}>
-                    <Input type="password" value={form.projectToken} onChange={(event) => update("projectToken", event.target.value)} placeholder="project token" />
+                  <Field label={t("railwayProjectToken")} hint={t("projectTokenOptionalHint")}>
+                    <Input type="password" value={form.projectToken} onChange={(event) => update("projectToken", event.target.value)} placeholder="project token" inputClassName={requiredBox(form.projectToken)} />
                   </Field>
                 </div>
               )}
