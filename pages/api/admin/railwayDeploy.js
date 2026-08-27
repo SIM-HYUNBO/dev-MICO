@@ -1093,9 +1093,10 @@ async function readInstallSqlFileList() {
   return files;
 }
 
-async function applySchema(connectionString, schemaNameInput, systemCodeInput) {
+async function applySchema(connectionString, schemaNameInput, systemCodeInput, brandNameInput) {
   const schemaName = normalizeSchemaName(schemaNameInput);
   const systemCode = normalizeSystemCode(systemCodeInput);
+  const brandName = String(brandNameInput || "").trim().slice(0, 60);
   const files = await readInstallSqlFileList();
   const client = new Client({ connectionString, ssl: getSslConfig(connectionString) });
   await client.connect();
@@ -1119,6 +1120,27 @@ async function applySchema(connectionString, schemaNameInput, systemCodeInput) {
     // 동적 SQL 은 스크립트로 심은 뒤, 지금 돌고 있는 서비스의 등록분으로 덮어쓴다.
     // 관리 화면에서 고친 쿼리까지 새 시스템에 그대로 따라간다.
     const dynamicSqlCopy = await copyDynamicSqlToTarget(client, { schemaName, systemCode });
+
+    // 화면에 보일 이름. 새로 설치한 시스템은 아직 로고가 없으므로 헤더·로그인
+    // 화면이 이 이름을 글자로 보여준다. 환경변수가 아니라 라벨로 두는 이유는
+    // 셋이다 — 설치 마법사가 등록하는 환경변수를 늘리지 않고, 다국어 구조를
+    // 그대로 쓰며, 나중에 관리자가 재배포 없이 리소스 화면에서 고칠 수 있다.
+    let brandSeeded = false;
+    if (brandName) {
+      await client.query(
+        `INSERT INTO ${quoteIdent(schemaName)}.TB_COR_RESOURCE_TEXT
+           (SYSTEM_CODE, RESOURCE_TYPE, RESOURCE_KEY, LANGUAGE_CODE, RESOURCE_TEXT, CREATE_USER_ID, UPDATE_USER_ID, UPDATE_TIME)
+         SELECT $1, 'label', 'brandName', lang, $2, 'installer', 'installer', NOW()
+           FROM UNNEST(ARRAY['ko-KR','en-US','ja-JP']) AS lang
+         ON CONFLICT (SYSTEM_CODE, RESOURCE_TYPE, RESOURCE_KEY, LANGUAGE_CODE)
+         DO UPDATE SET RESOURCE_TEXT = EXCLUDED.RESOURCE_TEXT,
+                       UPDATE_USER_ID = EXCLUDED.UPDATE_USER_ID,
+                       UPDATE_TIME = NOW()`,
+        [systemCode, brandName],
+      );
+      brandSeeded = true;
+    }
+
     const verification = await verifyAppliedSchema(client, schemaName);
     return {
       schema: schemaName,
@@ -1126,6 +1148,7 @@ async function applySchema(connectionString, schemaNameInput, systemCodeInput) {
       source: "scripts/install_sql_files.json + live dynamic SQL",
       sqlFiles: applied.length,
       dynamicSql: dynamicSqlCopy,
+      brandName: brandSeeded ? brandName : null,
       verification,
       applied: true,
     };
@@ -1293,7 +1316,7 @@ export default async function handler(req, res) {
         break;
       case "applySchema":
         requireFields(req.body, ["databaseUrl", "schemaName", "systemCode"]);
-        data = await applySchema(req.body.databaseUrl, req.body.schemaName, req.body.systemCode);
+        data = await applySchema(req.body.databaseUrl, req.body.schemaName, req.body.systemCode, req.body.brandName);
         break;
       case "scaffoldRepository":
         requireFields(req.body, ["githubToken", "githubRepo"]);

@@ -1723,6 +1723,9 @@ export default function RailwayDeployWizard() {
         databaseUrl: form.databaseUrl,
         schemaName: form.schemaName,
         systemCode: form.systemCode,
+        // 새 시스템은 아직 로고가 없다. 2단계에서 넣은 프로젝트 이름을 화면에
+        // 보일 이름으로 심어, 설치 직후부터 자기 이름이 뜨게 한다.
+        brandName: String(form.projectName || "").trim(),
       });
       if (data) {
         if (form.projectId && form.environmentId && form.serviceId) {
@@ -1820,7 +1823,10 @@ export default function RailwayDeployWizard() {
       if (active?.deployment?.id) {
         setDeployment({ id: active.deployment.id, status: active.deployment.status });
         appendLog("success", "activeDeployment", `이미 진행 중인 배포를 지켜봅니다: ${active.deployment.status}`);
-        watchDeployment(active.deployment.id);
+        // await 해야 빌드가 끝날 때까지 stepBusy 가 유지되고 실행 버튼이 잠긴다.
+        // 기다리지 않으면 곧바로 버튼이 풀려, 빌드가 도는 중에 한 번 더 눌러
+        // 같은 커밋으로 배포가 두 번 돈다.
+        await watchDeployment(active.deployment.id);
         return;
       }
       const data = await callApi("deployService", {
@@ -1832,7 +1838,8 @@ export default function RailwayDeployWizard() {
         setDeployment({ id: deploymentId, status: "PENDING" });
         // 빌드가 도는 동안은 이 단계에 머문다. 바로 다음 단계로 넘기면 정작
         // 지켜보라고 만든 상태 표시를 볼 수 없다.
-        watchDeployment(deploymentId);
+        // await 해야 그동안 실행 버튼이 잠긴다(위 activeDeployment 쪽과 같은 이유).
+        await watchDeployment(deploymentId);
         return;
       }
       if (data) setActive(6);
