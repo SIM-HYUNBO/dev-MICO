@@ -1,0 +1,128 @@
+/* ============================================================
+   Mono 테마 — 흑백 미니멀 에디토리얼
+   ------------------------------------------------------------
+   ZICP 프로토타입 시안(매거진 B · 29CM 참조)의 색·형태를 토큰으로 옮긴 것.
+
+   globals.css 의 토큰만 덮어쓴다. 컴포넌트는 손대지 않는다 —
+   공용 컴포넌트가 이미 전부 토큰을 쓰도록 정리되어 있어서
+   이 파일 하나로 전체 화면의 색이 바뀐다.
+
+   끄려면 globals.css 의 @import 한 줄만 지우면 된다.
+   ============================================================ */
+
+:root:root {
+  /* ---------- 무채색 ----------
+     브랜드 컬러를 따로 두지 않는 것이 이 디자인의 컨셉이다.
+     주요 액션은 색이 아니라 '검정 채움'으로 구분한다. */
+  --brand-cyan: #111111;
+  --brand-blue-light: #333333;
+  --brand-blue: #111111;
+  --brand-blue-dark: #000000;
+  --brand-emerald: #111111;
+  --brand-emerald-dark: #000000;
+  --brand-violet: #111111;
+
+  /* 그라데이션도 평면 검정으로. ui/Button 의 primary 가 이걸 쓴다. */
+  --brand-gradient: linear-gradient(135deg, #111111 0%, #111111 100%);
+  --brand-gradient-soft: linear-gradient(135deg, rgba(17,17,17,0.06) 0%, rgba(17,17,17,0.06) 100%);
+
+  /* ---------- 면과 선 ---------- */
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-alt: #f7f6f4;      /* 요약 패널의 아주 연한 웜그레이 */
+  --border: #e5e5e5;
+  --border-strong: #111111;    /* 보조 버튼의 검정 테두리 */
+
+  /* ---------- 글자 ---------- */
+  --text: #111111;
+  --text-muted: #8a8a8a;
+  --text-subtle: #b3b3b3;
+
+  /* ---------- 상태색 ----------
+     무채색 화면이라 상태는 최소한만 색을 남긴다.
+     시안도 증감 표시(+12% vs 어제)에만 초록을 썼다. */
+  --success: #1a7f46;
+  --danger: #c0392b;
+  --warn: #8a6d1f;
+  --info: #111111;
+  --heading-color: #111111;
+  --section-title-color: #111111;
+  --link-color: #111111;
+
+  --brand-blue-rgb: 17 17 17;
+  --brand-violet-rgb: 17 17 17;
+  --brand-emerald-rgb: 17 17 17;
+  --success-rgb: 26 127 70;
+  --danger-rgb: 192 57 43;
+  --warn-rgb: 138 109 31;
+  --info-rgb: 17 17 17;
+
+  --bg-rgb: 255 255 255;
+  --surface-rgb: 255 255 255;
+  --surface-alt-rgb: 247 246 244;
+  --border-rgb: 229 229 229;
+
+  /* ---------- 형태 ----------
+     시안은 버튼·카드가 모두 각져 있다. 라운드를 걷어낸다. */
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius: 0rem;               /* shadcn 계열 컴포넌트용 */
+
+  /* ---------- 그림자 ----------
+     에디토리얼 톤에서는 그림자 대신 얇은 선으로 영역을 나눈다. */
+  --shadow-card: none;
+  --shadow-card-strong: none;
+  --shadow-primary: none;
+  --shadow-success: none;
+  --shadow-danger: none;
+
+  /* 영역 틴트도 무채색으로 */
+  --section-ai-bg: rgba(17, 17, 17, 0.04);
+}
+
+  /* ---------- 다크 ----------
+     흑백 반전. 배경이 검정, 글자가 흰색이 된다. */
+:root.dark, .dark {
+  --brand-blue: #ffffff;
+  --brand-cyan: #ffffff;
+  --brand-emerald: #ffffff;
+  --brand-violet: #ffffff;
+  --brand-gradient: linear-gradient(135deg, #ffffff 0%, #ffffff 100%);
+
+  --bg: #0d0d0d;
+  --surface: #141414;
+  --surface-alt: #1c1c1c;
+  --border: #2a2a2a;
+  --border-strong: #ffffff;
+
+  --text: #f2f2f2;
+  --text-muted: #9a9a9a;
+  --text-subtle: #6a6a6a;
+
+  --success: #4ade80;
+  --danger: #f87171;
+  --warn: #fbbf24;
+  --info: #ffffff;
+  --heading-color: #f2f2f2;
+  --section-title-color: #f2f2f2;
+  --link-color: #f2f2f2;
+
+  --brand-blue-rgb: 255 255 255;
+  --brand-violet-rgb: 255 255 255;
+  --brand-emerald-rgb: 255 255 255;
+  --success-rgb: 74 222 128;
+  --danger-rgb: 248 113 113;
+  --warn-rgb: 251 191 36;
+  --info-rgb: 255 255 255;
+
+  --bg-rgb: 13 13 13;
+  --surface-rgb: 20 20 20;
+  --surface-alt-rgb: 28 28 28;
+  --border-rgb: 42 42 42;
+
+  --shadow-card: none;
+  --shadow-card-strong: none;
+  --shadow-primary: none;
+}

@@ -1,0 +1,821 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 오버스크롤 바운스 방지 */
+html,
+body {
+  width: 100%;
+  max-width: 100vw;
+  max-width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  overflow-x: clip;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 스크롤바 — 거의 안 보이게 (PC) */
+html {
+  min-width: 0;
+  touch-action: manipulation;
+}
+
+body,
+#__next {
+  position: relative;
+  min-width: 0;
+  max-width: 100vw;
+  overflow-x: clip;
+}
+
+#__next {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+* {
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  width: 2px;
+  height: 2px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+/* 색 테마 변수 정의
+===============================
+red, orange, amber, yellow, lime,
+green, emerald, teal, cyan, sky,
+blue, indigo, violet, purple, fuchsia,
+pink, rose, slate, gray, zinc,
+neutral, stone
+================================== 
+*/
+@layer utilities {
+  :root {
+    --site-header-height: 60px;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    --theme-light-bg: #ffffff;
+    --theme-light-text: #111111;
+    --theme-medium-bg: #e5e5e5;
+    --theme-medium-text: #8a8a8a;
+    --theme-semi-bg: #f7f6f4;
+    --theme-semi-text: #8a8a8a;
+    --theme-border: #e5e5e5;
+    --brand-gradient: linear-gradient(135deg, #111111 0%, #111111 100%);
+    --brand-gradient-soft: linear-gradient(135deg, rgba(17,17,17,0.06) 0%, rgba(17,17,17,0.06) 100%);
+    --brand-cyan: #111111;
+    --brand-blue-light: #333333;
+    --brand-blue: #111111;
+    --brand-blue-dark: #000000;
+    --brand-emerald: #111111;
+    --brand-emerald-dark: #000000;
+    --brand-violet: #111111;
+    --bg: var(--theme-light-bg);
+    --surface: #ffffff;
+    --surface-alt: var(--theme-semi-bg);
+    --border: var(--theme-border);
+    --border-strong: var(--theme-medium-bg);
+    --text: var(--theme-light-text);
+    --text-muted: var(--theme-medium-text);
+    --text-subtle: var(--theme-semi-text);
+    --button-surface: #ffffff;
+    --button-surface-hover: var(--theme-semi-bg);
+    --button-text: var(--theme-light-text);
+    --button-muted-text: var(--theme-medium-text);
+    --button-border: var(--theme-medium-bg);
+    --success: #059669;
+    --danger: #dc2626;
+    --warn: #d97706;
+    --info: var(--brand-blue);
+    --heading-color: var(--brand-blue);
+    --section-title-color: var(--brand-blue);
+    --link-color: var(--brand-blue);
+
+    /* 같은 색의 '채널값' 쌍둥이.
+       Tailwind 는 var() 안의 색을 빌드 시점에 모르기 때문에 투명도 수식을
+       붙이지 못한다 — bg-[var(--brand-blue)]/10 같은 클래스는 CSS 규칙이
+       아예 생성되지 않고 조용히 사라진다(실제로 코드 70곳이 그랬다).
+       색이 아니라 숫자로 두면 tailwind.config 에서
+       rgb(var(--x-rgb) / <alpha-value>) 로 등록할 수 있고, 그러면
+       bg-brand-blue/10 처럼 정상적인 유틸리티가 만들어진다.
+       원본 --brand-blue 등은 그대로 둔다. var(--brand-blue) 를 직접 쓰는
+       곳이 많아 값을 숫자로 바꾸면 그쪽이 전부 깨진다. */
+    --brand-blue-rgb: 17 17 17;
+    --brand-violet-rgb: 17 17 17;
+    --success-rgb: 5 150 105;
+    --danger-rgb: 220 38 38;
+    --warn-rgb: 217 119 6;
+    --info-rgb: 17 17 17;
+    --brand-emerald-rgb: 17 17 17;
+
+    /* 테마 연동색의 채널 쌍둥이.
+       라이트는 바로 위 hex 가 원본이라 값을 직접 적는다.
+       다크는 색이 lib/themes.js 에서 런타임에 오기 때문에 여기에 미리 적을 수
+       없고, .dark 에서 --theme-*-rgb(themes.js 가 hex 와 같이 주입) 로 넘긴다. */
+    --bg-rgb: 255 255 255;
+    --surface-rgb: 255 255 255;
+    --surface-alt-rgb: 247 246 244;
+    --border-rgb: 229 229 229;
+
+    /* 모의투자 화면의 영역 구분색.
+       Tailwind 는 var() 색에 투명도 수식(/40, /[0.06])을 붙이지 못한다 —
+       bg-[var(--brand-violet)]/[0.06] 같은 클래스는 CSS 로 생성되지 않고
+       조용히 사라진다. 실제로 세 영역의 틴트가 전부 CSS 에 없었다.
+       그래서 알파를 여기서 완성한 값으로 내려준다.
+       브랜드색은 라이트/다크가 같은 hex 라 rgba 로 고정해도 안전하다. */
+    --section-ai-bg: rgba(2, 132, 199, 0.07);      /* brand-blue #0284c7 */
+    --section-ai-border: rgba(2, 132, 199, 0.45);
+    --section-mine-bg: rgba(139, 92, 246, 0.07);   /* brand-violet #8b5cf6 */
+    --section-mine-border: rgba(139, 92, 246, 0.45);
+    --section-all-bg: rgba(100, 116, 139, 0.10);   /* slate-500 */
+    --section-all-border: rgba(100, 116, 139, 0.40);
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 20px;
+    --radius-pill: 999px;
+    --shadow-card: 0 6px 24px rgba(15,23,42,0.06);
+    --shadow-card-strong: 0 30px 60px -20px rgba(2,132,199,0.35);
+    --shadow-primary: 0 6px 16px rgba(2,132,199,0.28);
+    --shadow-success: 0 6px 16px rgba(5,150,105,0.28);
+    --shadow-danger: 0 6px 14px rgba(239,68,68,0.28);
+
+    /* 브랜드 색상 토큰 */
+    --brand-green: var(--brand-blue);
+    --brand-danger: theme("colors.red.500");
+
+    --general-text-color: var(--theme-light-text);
+    --general-bg-color: var(--theme-light-bg);
+
+    /* 본문 카드 배경. 코드 33곳이 var(--general-text-bg-color) 를 쓰는데
+       정의된 곳이 없어 지금까지 전부 투명으로 떨어지고 있었다. */
+    --general-text-bg-color: var(--surface);
+    --general-text-bg-color-rgb: var(--surface-rgb);
+
+    /* 테두리 색. 코드 227곳이 var(--border-color) 를 쓰는데 역시 정의된 곳이
+       없었다. 정의되지 않은 변수를 쓰면 border-color 선언이 무효가 되어
+       currentColor(본문 글자색)로 떨어진다 — 옅은 회색이어야 할 테두리가
+       글자색 그대로 그려지고 있었다. */
+    --border-color: var(--border);
+
+    --chat-input-border: theme("colors.gray.300");
+  }
+
+  .dark {
+    /* 베이스 색은 설정 컬러테마(--theme-*)를 그대로 따라간다. 실제 색 값은 lib/themes.js 에서만 온다.
+       기본 테마 baseline은 _document.js가 첫 페인트 전에 주입하므로 여기에 hex fallback이 필요 없다(하드코딩 없음). */
+    --bg:            var(--theme-dark-bg);
+    --surface:       var(--theme-semi-bg);
+    --surface-alt:   var(--theme-semi-bg);
+    --border:        var(--theme-medium-bg);
+    --border-strong: var(--theme-medium-bg);
+    --text:          var(--theme-dark-text);
+    --text-muted:    var(--theme-medium-text);
+    --text-subtle:   var(--theme-medium-text);
+    --button-surface: var(--theme-semi-bg);
+    --button-surface-hover: var(--theme-medium-bg);
+    --button-text: var(--theme-dark-text);
+    --button-muted-text: var(--theme-dark-text);
+    --button-border: var(--theme-medium-bg);
+
+    /* 위 색들의 채널 쌍둥이. --theme-*-rgb 는 lib/themes.js 가 hex 와 함께
+       주입하고(첫 페인트분은 _document.js baseline), 테마를 바꾸면 같이 바뀐다. */
+    --bg-rgb:          var(--theme-dark-bg-rgb);
+    --surface-rgb:     var(--theme-semi-bg-rgb);
+    --surface-alt-rgb: var(--theme-semi-bg-rgb);
+    --border-rgb:      var(--theme-medium-bg-rgb);
+
+    /* 상태색(성공/경고/위험)은 테마와 무관하게 고정 */
+    --success: #10b981;
+    --danger:  #ef4444;
+    --warn:    #f59e0b;
+    --info:    var(--brand-blue);
+    --heading-color: var(--brand-blue);
+    --section-title-color: var(--brand-blue);
+    --link-color: var(--brand-blue);
+    /* 상태색은 다크에서 값이 다르므로 채널도 같이 바꾼다.
+       브랜드색은 두 모드가 같은 값이라 :root 것을 그대로 쓴다. */
+    --success-rgb: 16 185 129;
+    --danger-rgb:  239 68 68;
+    --warn-rgb:    245 158 11;
+    --info-rgb:    56 189 248;
+    --brand-emerald-rgb: 16 185 129;
+
+    /* 다크에서는 같은 알파가 훨씬 흐리게 보인다. 한 단계씩 올린다. */
+    --section-ai-bg: rgba(56, 189, 248, 0.10);     /* brand-blue-light */
+    --section-ai-border: rgba(56, 189, 248, 0.45);
+    --section-mine-bg: rgba(167, 139, 250, 0.10);  /* violet-400 */
+    --section-mine-border: rgba(167, 139, 250, 0.45);
+    --section-all-bg: rgba(148, 163, 184, 0.13);   /* slate-400 */
+    --section-all-border: rgba(148, 163, 184, 0.40);
+    --shadow-card: 0 8px 24px rgba(0,0,0,0.4);
+
+    --general-text-color: var(--theme-dark-text);
+    --general-bg-color:   var(--theme-dark-bg);
+    --chat-input-border:  var(--theme-medium-bg);
+  }
+
+  /* ============================================
+   변수 기반 색상 적용 @apply 안써도 var 사용하면 됨
+   ============================================ */
+
+  .gradient-text {
+    background-image: var(--brand-gradient);
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+  }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 22px);
+  }
+
+  /* 고정 탭바(~78px) + safe-area 확보용 하단 여백 (md 이상에서는 0) */
+  .tab-bar-pb {
+    padding-bottom: calc(78px + env(safe-area-inset-bottom, 22px));
+  }
+  @media (min-width: 768px) {
+    .tab-bar-pb { padding-bottom: 0; }
+  }
+
+  .font-mono-data {
+    font-family: var(--font-mono);
+  }
+
+  /* light/dark 텍스트 색상 */
+  .theme-light-text-bg-color {
+    color: var(--theme-light-text);
+    background-color: var(--theme-light-bg);
+  }
+  .theme-dark-text-bg-color {
+    color: var(--theme-dark-text);
+    background-color: var(--theme-dark-bg);
+  }
+
+  /* medium 텍스트 및 배경 */
+  .theme-medium-text-bg-color {
+    color: var(--theme-medium-text);
+    background-color: var(--theme-medium-bg);
+  }
+
+  /* semi 텍스트 및 배경 */
+  .theme-semi-text-bg-color {
+    color: var(--theme-semi-text);
+    background-color: var(--theme-semi-bg);
+  }
+
+  /* 사용자 정의 클래스 재활용 */
+
+  .medium-text-color {
+    color: var(--theme-medium-text);
+  }
+  .medium-bg-color {
+    background-color: var(--theme-medium-bg);
+  }
+
+  .dark-bg-color {
+    background-color: var(--theme-dark-bg);
+  }
+  .semi-text-color {
+    color: var(--theme-semi-text);
+  }
+  .semi-bg-color {
+    background-color: var(--theme-semi-bg);
+  }
+
+  .semi-text-bg-color {
+    color: var(--theme-semi-text);
+    background-color: var(--theme-semi-bg);
+  }
+
+  .medium-text-bg-color {
+    color: var(--theme-medium-text);
+    background-color: var(--theme-medium-bg);
+  }
+
+  .general-text-color {
+    color: var(--general-text-color);
+  }
+
+  .general-text-bg-color {
+    color: var(--general-text-color);
+    background-color: var(--general-bg-color);
+  }
+
+  /* 채팅 입력창 */
+  .chat-input {
+    background-color: var(--general-bg-color);
+    color: var(--general-text-color);
+    border-color: var(--chat-input-border);
+  }
+  .chat-input:disabled {
+    background-color: var(--theme-semi-bg);
+    color: var(--theme-medium-text);
+    border-color: var(--theme-semi-bg);
+    cursor: not-allowed;
+  }
+  .chat-send-btn-disabled {
+    background-color: var(--theme-medium-bg);
+    color: var(--theme-semi-text);
+    cursor: not-allowed;
+  }
+
+  .theme-button {
+    background-color: var(--button-surface);
+    border-color: var(--button-border);
+    color: var(--button-text);
+  }
+  .theme-button:hover:not(:disabled) {
+    background-color: var(--button-surface-hover);
+    border-color: var(--brand-blue);
+    color: var(--brand-blue);
+  }
+  .theme-button-muted {
+    color: var(--button-muted-text);
+  }
+  .theme-icon-button {
+    background-color: var(--button-surface);
+    border-color: var(--button-border);
+    color: var(--button-muted-text);
+  }
+  .theme-icon-button:hover:not(:disabled) {
+    background-color: var(--button-surface-hover);
+    border-color: var(--brand-blue);
+    color: var(--brand-blue);
+  }
+
+  /* 채팅 방 목록 버튼 */
+  .room-btn {
+    background-color: var(--theme-semi-bg);
+    color: var(--theme-semi-text);
+    border: 1px solid var(--theme-border, rgba(128,128,128,0.2));
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    transition: background-color 0.15s ease;
+  }
+  .room-btn:hover {
+    background-color: var(--theme-medium-bg);
+  }
+  .room-btn-selected {
+    background-color: var(--theme-medium-bg);
+    color: var(--theme-semi-text);
+    outline: 2px solid #60a5fa;
+    outline-offset: -2px;
+    font-weight: 700;
+  }
+
+  /* ===============================
+     기본 스타일들
+   =============================== */
+
+  .header {
+    @apply fixed
+           w-full
+           top-0
+           left-0
+           right-0
+           z-40
+           flex
+           items-center
+           general-text-bg-color;
+    height: var(--site-header-height, 56px);
+  }
+
+  footer {
+    @apply h-auto
+    mt-5
+    w-full
+    relative
+    bottom-0
+    flex
+    flex-col
+    items-center
+    justify-center
+    semi-text-bg-color;
+  }
+  /* 기본 라이트 모드 헤딩 스타일 */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    /* 색을 유틸리티로 박아두면 테마 토큰이 닿지 않는다(흑백 테마에서 제목만
+       파랗게 남았다). 헤딩 전용 토큰을 두고 테마가 덮어쓸 수 있게 한다. */
+    color: var(--heading-color, var(--text));
+  }
+
+  /* 다크 모드일 때 */
+  .dark h1,
+  .dark h2,
+  .dark h3,
+  .dark h4,
+  .dark h5,
+  .dark h6 {
+    color: var(--heading-color, var(--text));
+  }
+
+  pre {
+    @apply general-text-color 
+           whitespace-pre-wrap;
+  }
+
+  html {
+    /* height는 .Layout의 100dvh로 처리 */
+  }
+
+  a {
+    color: var(--link-color, var(--brand-blue));
+  }
+
+  p {
+    color: var(--theme-semi-text);
+  }
+
+  .bg-primary {
+    @apply w-full 
+           h-full 
+           general-text-bg-color
+           min-h-[calc(100vh-5rem)] 
+           max-w-full;
+  }
+
+  .page-title {
+    @apply text-2xl ml-5 my-5 font-medium;
+    color: var(--heading-color, var(--text));
+  }
+
+  /* 제목 계층 */
+  .section-title {
+    @apply text-lg font-semibold mb-2;
+    color: var(--section-title-color, var(--heading-color, var(--text)));
+  }
+
+  .label-title {
+    @apply text-sm
+           font-semibold
+           text-green-800
+           dark:text-green-400
+           mb-1;
+  }
+
+  /* 버튼 공통 기반 */
+  .btn-base {
+    @apply px-3 py-1 rounded-lg text-xs font-bold text-white
+           transition-all duration-200 border-none cursor-pointer
+           active:scale-95 active:opacity-90
+           disabled:cursor-not-allowed disabled:active:scale-100 disabled:active:opacity-100;
+  }
+
+  /* Primary — 파랑 */
+  .btn-primary {
+    @apply btn-base bg-blue-500 hover:bg-blue-600
+           disabled:bg-gray-300 shadow-sm;
+  }
+
+  /* Brand — 에메랄드 (카페 시작) */
+  .btn-brand {
+    @apply btn-base bg-emerald-500 hover:bg-emerald-600
+           disabled:bg-gray-300;
+    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.35);
+  }
+  .btn-brand:disabled {
+    box-shadow: none;
+  }
+
+  /* Danger — 빨강 (종료) */
+  .btn-danger {
+    @apply btn-base bg-red-500 hover:bg-red-600
+           disabled:bg-gray-300;
+    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.35);
+  }
+  .btn-danger:disabled {
+    box-shadow: none;
+  }
+
+  /* Ghost — 테두리 */
+  .btn-ghost {
+    @apply btn-base bg-transparent border border-gray-300
+           text-gray-700 dark:text-gray-300 dark:border-gray-600
+           hover:bg-gray-100 dark:hover:bg-gray-800;
+  }
+
+  /* 카페 컨테이너 */
+  .cafe-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    width: 100%;
+    box-sizing: border-box;
+    font-family: 'Noto Sans KR', sans-serif;
+  }
+
+  /* 카페 메뉴 선택 버튼 (기본 — 비선택 상태) */
+  .menu-btn {
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    background: var(--theme-semi-bg);
+    color: var(--theme-semi-text);
+    transition: background 0.2s, color 0.2s;
+  }
+  .menu-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* 카페 진행바 */
+  .cafe-progress-track {
+    width: 100%;
+    height: 4px;
+    background: var(--theme-semi-bg);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 3px;
+  }
+
+  /* HOT/ICE 토글 — 비선택 상태 배경 */
+  .temp-btn-off {
+    background-color: var(--general-bg-color);
+  }
+
+  /* 카페 상태 텍스트 */
+  .cafe-status-text {
+    @apply text-xs font-semibold tracking-wide;
+    color: var(--theme-medium-text);
+    transition: color 0.3s;
+  }
+
+  .Layout {
+    @apply bg-primary flex flex-col overflow-hidden w-full max-w-full;
+    /* 높이 폴백 체인: 구형 → iOS webkit → svh(주소창 포함 최소 뷰포트) → dvh(동적) */
+    height: 100vh;
+    height: -webkit-fill-available;
+    height: 100svh;
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+
+  .Layout main {
+    @apply flex-grow;
+  }
+
+  .BodySection {
+    @apply w-full max-w-5xl mx-auto overflow-x-hidden px-4;
+    height: 100%;
+  }
+
+  .user-select-text {
+    user-select: text;
+  }
+
+  /* ================================
+     채팅 패널
+   ================================ */
+  .chat-panel {
+    @apply flex-1 flex flex-col min-h-0 ml-0 md:ml-1 mt-2 rounded-xl
+           border shadow-sm;
+    border-color: var(--theme-semi-bg);
+    background-color: var(--general-bg-color);
+  }
+
+  .members-panel {
+    @apply mt-2 border rounded-xl px-3 py-2 text-sm shrink-0;
+    border-color: var(--theme-semi-bg);
+    background-color: var(--general-bg-color);
+  }
+
+  /* 채팅 버블 */
+  .bubble-mine {
+    @apply inline-block max-w-[75%] px-3 py-1.5 rounded-2xl rounded-tr-sm
+           bg-blue-500 text-white text-sm;
+    word-break: break-word;
+  }
+
+  .bubble-others {
+    @apply inline-block max-w-[75%] px-3 py-1.5 rounded-2xl rounded-tl-sm text-sm;
+    background-color: var(--theme-semi-bg);
+    color: var(--general-text-color);
+    word-break: break-word;
+  }
+
+  /* 활동 토글 버튼 */
+  .activity-btn {
+    @apply px-3 py-1 rounded-lg text-sm font-semibold transition-colors duration-150;
+  }
+  .activity-btn-coffee-on   { @apply bg-blue-600 text-white; }
+  .activity-btn-coffee-off  { @apply bg-blue-100 text-blue-700; }
+  .activity-btn-smoking-on  { @apply bg-orange-600 text-white; }
+  .activity-btn-smoking-off { @apply bg-orange-100 text-orange-700; }
+
+  .dark .activity-btn-coffee-off  { @apply bg-blue-900 text-blue-300; }
+  .dark .activity-btn-smoking-off { @apply bg-orange-900 text-orange-300; }
+
+  /* ================================
+     접근성 — 포커스 링
+   ================================ */
+  :focus-visible {
+    outline: 2px solid var(--brand-green);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* 버튼 포커스 */
+  button:focus-visible {
+    outline: 2px solid var(--brand-green);
+    outline-offset: 2px;
+  }
+}
+
+/* ---break--- 
+*/
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 224 71.4% 4.1%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 71.4% 4.1%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71.4% 4.1%;
+    --primary: 220.9 39.3% 11%;
+    --primary-foreground: 210 20% 98%;
+    --secondary: 220 14.3% 95.9%;
+    --secondary-foreground: 220.9 39.3% 11%;
+    --muted: 220 14.3% 95.9%;
+    --muted-foreground: 220 8.9% 46.1%;
+    --accent: 220 14.3% 95.9%;
+    --accent-foreground: 220.9 39.3% 11%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 224 71.4% 4.1%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.5rem;
+  }
+  .dark {
+    /* 남색(hue 224/215) → 중립 회색: 채도 0% */
+    --background: 0 0% 7%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 11%;
+    --secondary: 0 0% 17%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 17%;
+    --muted-foreground: 0 0% 64%;
+    --accent: 0 0% 17%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 20%;
+    --input: 0 0% 20%;
+    --ring: 0 0% 84%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+/* ---break--- 
+*/
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Pretendard', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  }
+}
+
+/* Ant Design 버튼 다크모드 오버라이드 */
+.ant-btn-default:not(.ant-btn-primary):not(.ant-btn-dangerous) {
+  background-color: var(--button-surface);
+  border-color: var(--button-border);
+  color: var(--button-text);
+}
+.ant-btn-default:not(.ant-btn-primary):not(.ant-btn-dangerous):hover:not(:disabled) {
+  background-color: var(--button-surface-hover);
+  border-color: var(--brand-blue);
+  color: var(--brand-blue);
+}
+.ant-btn-default:not(.ant-btn-primary):not(.ant-btn-dangerous):disabled {
+  background-color: var(--button-surface);
+  border-color: var(--button-border);
+  color: var(--button-muted-text);
+  opacity: 0.55;
+}
+.dark .ant-btn-dangerous {
+  background-color: #7f1d1d;
+  border-color: #991b1b;
+  color: #fca5a5;
+}
+.dark .ant-btn-dangerous:hover:not(:disabled) {
+  background-color: #991b1b;
+  border-color: #b91c1c;
+  color: #fecaca;
+}
+.dark .ant-btn-dangerous:disabled {
+  background-color: #1f2937;
+  border-color: #374151;
+  color: #6b7280;
+}
+.dark .ant-input {
+  background-color: #374151;
+  border-color: #4b5563;
+  color: #f3f4f6;
+}
+.dark .ant-input::placeholder {
+  color: #9ca3af;
+}
+.dark .ant-input:focus,
+.dark .ant-input:hover {
+  border-color: #6b7280;
+}
+
+/* 채팅 글씨 크기 — 레이아웃(rem 기반 너비·높이·패딩) 영향 없이 텍스트만 스케일 */
+:root {
+  --chat-font-scale: 1;
+}
+.chat-msg-text {
+  font-size: calc(0.875rem * var(--chat-font-scale)) !important;
+}
+.chat-msg-sender {
+  font-size: calc(0.6875rem * var(--chat-font-scale)) !important;
+}
+
+/* iOS auto-zoom 방지: font-size 16px 미만 input 포커스 시 자동 줌 발생 */
+@supports (-webkit-touch-callout: none) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
+/* 스티커 애니메이션 */
+@keyframes sticker-shake {
+  0%, 100% { transform: rotate(-10deg) scale(1.05); }
+  50% { transform: rotate(10deg) scale(1.05); }
+}
+@keyframes sticker-flicker {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  35% { opacity: 0.8; transform: scale(0.9); }
+  65% { opacity: 1; transform: scale(1.1); }
+}
+@keyframes sticker-wobble {
+  0%, 100% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-10px) scale(1.08); }
+  60% { transform: translateY(5px) scale(0.94); }
+}
+@keyframes sticker-swing {
+  0%, 100% { transform: rotate(-15deg); }
+  50% { transform: rotate(15deg); }
+}
+.sticker-shake { animation: sticker-shake 0.45s ease-in-out infinite; }
+.sticker-flicker { animation: sticker-flicker 0.55s ease-in-out infinite; }
+.sticker-wobble { animation: sticker-wobble 0.9s ease-in-out infinite; }
+.sticker-swing { animation: sticker-swing 0.6s ease-in-out infinite; }
+span.resource-missing-warning {
+  display: inline-block;
+  margin: 0 2px;
+  padding: 2px 6px;
+  border: 2px solid #ff007a;
+  border-radius: 4px;
+  background: #fff100;
+  color: #7a003c;
+  font-weight: 900;
+  box-shadow: 0 0 0 2px rgba(255, 0, 122, 0.25);
+}
