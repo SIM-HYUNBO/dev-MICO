@@ -104,6 +104,16 @@ const i18n = {
   useExisting: { "en-US": "Use existing", "ko-KR": "기존 사용", "ja-JP": "既存を使用" },
   projectName: { "en-US": "Project name", "ko-KR": "프로젝트명", "ja-JP": "プロジェクト名" },
   siteName: { "en-US": "Site display name", "ko-KR": "사이트 표시 이름", "ja-JP": "サイト表示名" },
+  projectNameDerivesHint: {
+    "en-US": "The PostgreSQL service (_DB), the app service (_AP) and the DB schema are named from this. Editing one of those keeps your value.",
+    "ko-KR": "PostgreSQL 서비스(_DB), 앱 서비스(_AP), DB 스키마 이름이 여기서 만들어집니다. 그 칸을 직접 고치면 고친 값이 유지됩니다.",
+    "ja-JP": "PostgreSQL サービス(_DB)、アプリサービス(_AP)、DB スキーマ名がここから作られます。個別に編集した値はそのまま保持されます。",
+  },
+  derivedFromProjectName: {
+    "en-US": "Generated from the project name. Edit to override.",
+    "ko-KR": "프로젝트명에서 자동으로 만들어집니다. 직접 고치면 그 값을 씁니다.",
+    "ja-JP": "プロジェクト名から自動生成されます。編集するとその値を使います。",
+  },
   siteNameHint: {
     "en-US": "Shown in the header, sign-in and menu of the installed site instead of the Brunner logo. Defaults to the project name. Editable later in the resource screen.",
     "ko-KR": "설치된 사이트의 헤더·로그인·메뉴에 브런너 로고 대신 표시됩니다. 비워두면 프로젝트명을 씁니다. 설치 후 리소스 화면에서 바꿀 수 있습니다.",
@@ -654,6 +664,24 @@ const normalizeSchemaInput = (value) =>
     .replace(/^[0-9]+/, "")
     .slice(0, 63);
 
+// 프로젝트명 하나만 정하면 나머지 이름이 따라오게 한다.
+//
+// 왜
+//   DB 서비스·AP 서비스·스키마 이름을 따로 받으면 설치본마다 제각각이 되고,
+//   Railway 목록에서 어느 프로젝트 것인지 이름만 보고는 알 수 없다. 프로젝트명을
+//   접두어로 고정하면 목록이 그대로 정렬되고, 나중에 보고도 짝을 맞출 수 있다.
+//   직접 고친 칸은 다시 덮지 않으므로, 예전 방식으로 따로 정하는 것도 그대로 된다.
+const derivedNames = (projectName) => {
+  const base = String(projectName || "").trim();
+  return {
+    postgresName: base ? `${base}_DB` : "",
+    serviceName: base ? `${base}_AP` : "",
+    schemaName: normalizeSchemaInput(base),
+  };
+};
+
+const DEFAULT_PROJECT_NAME = "brunner-production";
+
 // 저장소는 owner/repo 로 넣지만 브라우저 주소창을 통째로 복사해 오는 일이 잦다.
 const normalizeRepo = (value) => {
   const trimmed = String(value || "").trim().replace(/\.git$/i, "").replace(/\/+$/, "");
@@ -1057,20 +1085,20 @@ export default function RailwayDeployWizard() {
     workspaceId: "",
     projectMode: "new",
     projectId: "",
-    projectName: "brunner-production",
+    projectName: DEFAULT_PROJECT_NAME,
     projectDescription: textFor("defaultProjectDescription", initialLanguageCode),
     environmentId: "",
     postgresServiceId: "",
-    postgresName: "brunner-postgres",
+    postgresName: derivedNames(DEFAULT_PROJECT_NAME).postgresName,
     dbReadReplicas: "0",
     appReplicas: "1",
     databaseUrl: "",
-    schemaName: "brunner",
+    schemaName: derivedNames(DEFAULT_PROJECT_NAME).schemaName,
     systemCode: "00",
     // 설치된 사이트가 로고 대신 보여줄 이름. 비워두면 프로젝트명을 쓴다.
     brandName: "",
     serviceId: "",
-    serviceName: "brunner-nextjs",
+    serviceName: derivedNames(DEFAULT_PROJECT_NAME).serviceName,
     githubRepo: "",
     githubBranch: "main",
     githubToken: "",
@@ -1142,6 +1170,26 @@ export default function RailwayDeployWizard() {
   );
 
   const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  // 사용자가 직접 고친 이름 칸. 프로젝트명이 바뀌어도 이 칸은 덮지 않는다.
+  const manualNamesRef = useRef(new Set());
+  const derivedNameKeys = ["postgresName", "serviceName", "schemaName"];
+
+  const updateProjectName = (value) => {
+    setForm((prev) => {
+      const next = { ...prev, projectName: value };
+      const derived = derivedNames(value);
+      for (const key of derivedNameKeys) {
+        if (!manualNamesRef.current.has(key)) next[key] = derived[key];
+      }
+      return next;
+    });
+  };
+
+  const updateDerivedName = (key, value) => {
+    manualNamesRef.current.add(key);
+    update(key, value);
+  };
   const t = (key) => textFor(key, languageCode);
 
   const bulkParsed = useMemo(() => parseBulkCredentials(bulkPaste), [bulkPaste]);
@@ -2279,7 +2327,7 @@ export default function RailwayDeployWizard() {
                   </div>
                   {form.projectMode === "new" ? (
                     <div className="grid gap-4 md:grid-cols-2">
-                      <Field label={t("projectName")}><Input value={form.projectName} onChange={(event) => update("projectName", event.target.value)} inputClassName={requiredBox(form.projectName)} /></Field>
+                      <Field label={t("projectName")} hint={t("projectNameDerivesHint")}><Input value={form.projectName} onChange={(event) => updateProjectName(event.target.value)} inputClassName={requiredBox(form.projectName)} /></Field>
                       <Field label={t("description")}><Input value={form.projectDescription} onChange={(event) => update("projectDescription", event.target.value)} /></Field>
                     </div>
                   ) : (
@@ -2293,7 +2341,7 @@ export default function RailwayDeployWizard() {
                           // 고른 프로젝트의 이름을 같이 채운다. 그러지 않으면 신규 생성용
                           // 초기값이 남아, 설치된 사이트에 엉뚱한 이름이 뜬다.
                           const picked = projects.find((project) => project.id === projectId);
-                          if (picked?.name) update("projectName", picked.name);
+                          if (picked?.name) updateProjectName(picked.name);
                         }}
                       >
                         <option value="">{t("selectProject")}</option>
@@ -2321,7 +2369,7 @@ export default function RailwayDeployWizard() {
                 <div className="grid gap-4">
                   <div className="grid gap-4 md:grid-cols-2">
                     <Field label={t("projectId")}><Input value={form.projectId} readOnly inputClassName="cursor-not-allowed opacity-80" placeholder={t("generatedAfterRun")} /></Field>
-                    <Field label={t("postgresName")}><Input value={form.postgresName} onChange={(event) => update("postgresName", event.target.value)} inputClassName={requiredBox(form.postgresName)} /></Field>
+                    <Field label={t("postgresName")} hint={t("derivedFromProjectName")}><Input value={form.postgresName} onChange={(event) => updateDerivedName("postgresName", event.target.value)} inputClassName={requiredBox(form.postgresName)} /></Field>
                     <Field label={t("postgresId")} hint={t("selectOrEnterDbService")}>
                       <div className="grid gap-2">
                         <ServiceIdInput id="postgres-service-id-options" value={form.postgresServiceId} onChange={(event) => selectPostgresService(event.target.value)} services={postgresServices} placeholder={t("blankCreatesNew")} />
@@ -2359,7 +2407,7 @@ export default function RailwayDeployWizard() {
                         </Button>
                       </div>
                     </Field>
-                    <Field label={t("schemaName")} hint={t("schemaNameHint")}><Input value={form.schemaName} onChange={(event) => update("schemaName", normalizeSchemaInput(event.target.value))} inputClassName={requiredBox(form.schemaName)} /></Field>
+                    <Field label={t("schemaName")} hint={t("schemaNameHint")}><Input value={form.schemaName} onChange={(event) => updateDerivedName("schemaName", normalizeSchemaInput(event.target.value))} inputClassName={requiredBox(form.schemaName)} /></Field>
                     <Field label={t("systemCode")} hint={t("systemCodeHint")}><Input value={form.systemCode} onChange={(event) => update("systemCode", event.target.value.slice(0, 2))} inputClassName={requiredBox(form.systemCode)} /></Field>
                   </div>
                   <div className="flex justify-end">
@@ -2409,7 +2457,7 @@ export default function RailwayDeployWizard() {
                     </Field>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
-                    <Field label={t("schemaName")} hint={t("schemaNameHint")}><Input value={form.schemaName} onChange={(event) => update("schemaName", normalizeSchemaInput(event.target.value))} inputClassName={requiredBox(form.schemaName)} /></Field>
+                    <Field label={t("schemaName")} hint={t("schemaNameHint")}><Input value={form.schemaName} onChange={(event) => updateDerivedName("schemaName", normalizeSchemaInput(event.target.value))} inputClassName={requiredBox(form.schemaName)} /></Field>
                     <Field label={t("systemCode")} hint={t("systemCodeHint")}><Input value={form.systemCode} onChange={(event) => update("systemCode", event.target.value.slice(0, 2))} inputClassName={requiredBox(form.systemCode)} /></Field>
                   </div>
                   <Field label={t("siteName")} hint={t("siteNameHint")}>
@@ -2429,7 +2477,7 @@ export default function RailwayDeployWizard() {
               {active === 4 && (
                 <div className="grid gap-4">
                   <div className="grid gap-4 md:grid-cols-2">
-                    <Field label={t("nextServiceName")}><Input value={form.serviceName} onChange={(event) => update("serviceName", event.target.value)} inputClassName={requiredBox(form.serviceName)} /></Field>
+                    <Field label={t("nextServiceName")} hint={t("derivedFromProjectName")}><Input value={form.serviceName} onChange={(event) => updateDerivedName("serviceName", event.target.value)} inputClassName={requiredBox(form.serviceName)} /></Field>
                     <Field label={t("serviceId")} hint={t("selectOrEnterService")}><ServiceIdInput id="next-service-id-options" value={form.serviceId} onChange={(event) => update("serviceId", event.target.value)} services={appServices} placeholder={t("blankCreatesNew")} /></Field>
                     <Field label={t("gitRepository")} hint={t("enteredInStep1")}>
                       <div className="flex gap-2">
