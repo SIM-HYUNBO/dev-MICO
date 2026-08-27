@@ -103,6 +103,12 @@ const i18n = {
   createNew: { "en-US": "Create new", "ko-KR": "신규 생성", "ja-JP": "新規作成" },
   useExisting: { "en-US": "Use existing", "ko-KR": "기존 사용", "ja-JP": "既存を使用" },
   projectName: { "en-US": "Project name", "ko-KR": "프로젝트명", "ja-JP": "プロジェクト名" },
+  siteName: { "en-US": "Site display name", "ko-KR": "사이트 표시 이름", "ja-JP": "サイト表示名" },
+  siteNameHint: {
+    "en-US": "Shown in the header, sign-in and menu of the installed site instead of the Brunner logo. Defaults to the project name. Editable later in the resource screen.",
+    "ko-KR": "설치된 사이트의 헤더·로그인·메뉴에 브런너 로고 대신 표시됩니다. 비워두면 프로젝트명을 씁니다. 설치 후 리소스 화면에서 바꿀 수 있습니다.",
+    "ja-JP": "インストール後のサイトのヘッダー・ログイン・メニューに Brunner ロゴの代わりに表示されます。空欄ならプロジェクト名を使います。後からリソース画面で変更できます。",
+  },
   description: { "en-US": "Description", "ko-KR": "설명", "ja-JP": "説明" },
   defaultProjectDescription: {
     "en-US": "Provisioned by Brunner system installation wizard",
@@ -1008,6 +1014,9 @@ export default function RailwayDeployWizard() {
   // 6단계는 저장소에 브랜치가 있어야 한다. 초기 소스 생성을 눌렀는지 기억해
   // 안 눌렀으면 배포 전에 막고 알려준다.
   const [scaffoldDone, setScaffoldDone] = useState(false);
+  // 이번 실행에서 저장소를 붙였는지. 붙이기 전에는 빌드가 걸리지 않으므로
+  // 6단계가 "진행 중인 배포"를 오래 기다릴 이유가 없다.
+  const [sourceAttached, setSourceAttached] = useState(false);
   // 데이터베이스가 접속을 받기까지 기다리는 중임을 화면에 보여준다.
   const [dbWaiting, setDbWaiting] = useState(null);
   // state 갱신을 기다리는 사이 두 번째 호출이 들어가는 것을 막는다.
@@ -1015,6 +1024,19 @@ export default function RailwayDeployWizard() {
   // 한 단계는 API 호출 여러 개로 이루어진다. callApi 가 호출마다 running 을
   // 비우기 때문에 그 틈에 버튼이 다시 눌렸다. 단계 전체가 끝날 때까지 잠근다.
   const [stepBusy, setStepBusy] = useState(false);
+  // 배포가 끝나기를 기다리는 중인지. 그동안 안에서 도는 조회 호출(상태 폴링,
+  // 로그 조회)이 단계 상태를 건드리면 안 된다. 조회가 성공한 것과 빌드가 끝난
+  // 것은 다른 얘기인데, 폴링마다 done 을 찍어 빌드 중에 화면이 성공으로 보였다.
+  const watchingRef = useRef(0);
+  const [watching, setWatching] = useState(false);
+  const beginWatch = () => {
+    watchingRef.current += 1;
+    setWatching(true);
+  };
+  const endWatch = () => {
+    watchingRef.current = Math.max(0, watchingRef.current - 1);
+    setWatching(watchingRef.current > 0);
+  };
   const [buildLogLines, setBuildLogLines] = useState([]);
   const [projects, setProjects] = useState([]);
   const [workspaces, setWorkspaces] = useState([]);
@@ -1045,6 +1067,8 @@ export default function RailwayDeployWizard() {
     databaseUrl: "",
     schemaName: "brunner",
     systemCode: "00",
+    // 설치된 사이트가 로고 대신 보여줄 이름. 비워두면 프로젝트명을 쓴다.
+    brandName: "",
     serviceId: "",
     serviceName: "brunner-nextjs",
     githubRepo: "",
@@ -1171,8 +1195,19 @@ export default function RailwayDeployWizard() {
   };
 
   // 배포는 몇 분 걸린다. 끝날 때까지 상태를 주기적으로 확인해 화면에 보여준다.
-  const watchDeployment = async (deploymentId, stepId = "deploy", { silent = false, label = "", serviceId = "" } = {}) => {
+  const watchDeployment = async (deploymentId, stepId = "deploy", options = {}) => {
+    beginWatch();
+    try {
+      return await watchDeploymentInner(deploymentId, stepId, options);
+    } finally {
+      endWatch();
+    }
+  };
+
+  const watchDeploymentInner = async (deploymentId, stepId, { silent = false, label = "", serviceId = "" } = {}) => {
     appendLog("success", "watchDeployment", `${label || stepId}: ${deploymentId}`);
+    // 앞선 호출이 done 을 찍어 놨을 수 있다. 빌드가 도는 동안은 실행 중이어야 한다.
+    setStepState((prev) => ({ ...prev, [stepId]: "running" }));
     // REMOVED / SKIPPED 는 실패가 아니라 "이 배포는 다른 배포로 대체됐다" 는
     // 뜻이다. 서비스를 만들고 곧바로 볼륨을 붙이면 Railway 가 첫 배포를 버리고
     // 새로 건다. 그것을 실패로 보면 정상 생성이 계속 빨간 상태가 된다.
@@ -1274,6 +1309,7 @@ export default function RailwayDeployWizard() {
     "upsertVariables",
     "ensureTcpProxy",
     "createNextService",
+    "attachServiceSource",
     "deployService",
     "createRedis",
   ]);
@@ -1281,6 +1317,8 @@ export default function RailwayDeployWizard() {
   const callApi = async (action, body = {}, stepId = steps[active].id, options = {}) => {
     setRunning(action);
     setStepState((prev) => ({ ...prev, [stepId]: "running" }));
+    // 지켜보는 중이면 결론은 watchDeployment 가 낸다. 여기서 done/error 를 찍지 않는다.
+    const holdState = Boolean(options.keepRunning) || watchingRef.current > 0;
     // 실패했을 때 어떤 토큰을 썼는지 알아야 안내를 붙일 수 있어 try 밖에 둔다.
     const useProjectToken = options.tokenType
       ? options.tokenType === "project"
@@ -1304,7 +1342,7 @@ export default function RailwayDeployWizard() {
       // 배포는 API 가 배포 ID 만 돌려주고 실제 빌드는 그 뒤로 몇 분을 더 돈다.
       // 그때 done 을 찍으면 빌드 중인데 화면은 성공으로 보인다. 지켜볼 일이
       // 남은 호출은 watchDeployment 가 끝에서 결과를 찍게 두고 여기서는 건너뛴다.
-      if (!options.keepRunning) {
+      if (!holdState) {
         setStepState((prev) => ({ ...prev, [stepId]: "done" }));
       }
       const detail = JSON.stringify(payload.data, null, 2);
@@ -1312,7 +1350,7 @@ export default function RailwayDeployWizard() {
       if (!options.silent) showResult("success", action, detail);
       return payload.data;
     } catch (error) {
-      setStepState((prev) => ({ ...prev, [stepId]: "error" }));
+      if (!holdState) setStepState((prev) => ({ ...prev, [stepId]: "error" }));
       // Railway 가 돌려주는 문장만으로는 무엇을 고쳐야 할지 알 수 없다.
       // 삭제 대기 중인 프로젝트, 그리고 프로젝트 토큰의 Not Authorized 는
       // 원인이 정해져 있으므로 무엇을 하면 되는지 붙여 준다.
@@ -1470,6 +1508,15 @@ export default function RailwayDeployWizard() {
   // 달라질 때까지 지켜본다. 끝내 안 바뀌면 재배포가 없었던 것으로 보고 넘어간다 —
   // 여기서 막으면 이미 Redis 참조를 들고 있는 서비스까지 못 지나간다.
   const waitForNewDeployment = async (serviceId, beforeDeploymentId, attempts = 12) => {
+    beginWatch();
+    try {
+      return await waitForNewDeploymentInner(serviceId, beforeDeploymentId, attempts);
+    } finally {
+      endWatch();
+    }
+  };
+
+  const waitForNewDeploymentInner = async (serviceId, beforeDeploymentId, attempts) => {
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       setAppRedeploy({ phase: "detecting", attempt, attempts });
       await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -1590,9 +1637,10 @@ export default function RailwayDeployWizard() {
   // 빌드가 도는 중인지. 배포 단계가 실행 중이고 지켜보는 배포가 잡혀 있으면
   // 그 사이에 실행·다음 버튼이 눌리지 않게 하고, 무엇을 기다리는지 밝힌다.
   const buildInProgress =
-    Boolean(deployment?.id) &&
-    !["SUCCESS", "FAILED", "CRASHED", "UNKNOWN"].includes(deployment?.status || "") &&
-    stepState.deploy === "running";
+    watching ||
+    (Boolean(deployment?.id) &&
+      !["SUCCESS", "FAILED", "CRASHED", "UNKNOWN"].includes(deployment?.status || "") &&
+      stepState.deploy === "running");
 
   const advanceFromProject = () => {
     if (!String(form.projectToken || "").trim()) {
@@ -1751,9 +1799,9 @@ export default function RailwayDeployWizard() {
         databaseUrl: form.databaseUrl,
         schemaName: form.schemaName,
         systemCode: form.systemCode,
-        // 새 시스템은 아직 로고가 없다. 2단계에서 넣은 프로젝트 이름을 화면에
-        // 보일 이름으로 심어, 설치 직후부터 자기 이름이 뜨게 한다.
-        brandName: String(form.projectName || "").trim(),
+        // 새 시스템은 아직 로고가 없다. 화면에 보일 이름을 심어 설치 직후부터
+        // 자기 이름이 뜨게 한다. 따로 넣지 않았으면 프로젝트명을 쓴다.
+        brandName: String(form.brandName || form.projectName || "").trim(),
       });
       if (data) {
         if (form.projectId && form.environmentId && form.serviceId) {
@@ -1799,6 +1847,17 @@ export default function RailwayDeployWizard() {
           serviceId,
           variables: appEnvVars,
         }, "service");
+        // 변수를 올린 뒤에 저장소를 붙인다. 순서가 반대면 Railway 가 저장소를 붙이는
+        // 순간 빌드를 거는데, 그때는 DATABASE_URL 이 없어 기동에서 죽는다. 몇 분을
+        // 태우고 실패 하나를 남기며, 6단계가 그것을 붙잡으면 정상 설치가 실패로 끊긴다.
+        const attached = await callApi("attachServiceSource", {
+          serviceId,
+          environmentId: form.environmentId,
+          githubRepo: form.githubRepo,
+          githubBranch: form.githubBranch,
+        }, "service", { silent: true });
+        if (!attached) return; // 저장소가 안 붙으면 6단계에서 배포할 것이 없다.
+        setSourceAttached(true);
         // 도메인이 있어야 8단계에서 확인할 주소가 생긴다.
         const domainData = await callApi("ensureServiceDomain", {
           projectId: form.projectId,
@@ -1829,23 +1888,32 @@ export default function RailwayDeployWizard() {
       // 진행 중인 것을 지켜본다. 같은 커밋으로 빌드가 두 번 도는 것을 막는다.
       // 스캐폴드가 push 를 했다면 Railway 가 이미 배포를 걸고 있다. 등록될
       // 때까지 넉넉히 기다린다 — 짧게 끊으면 그 틈에 또 걸어 두 번 돈다.
-      const waitRounds = scaffoldDone ? 12 : 4;
+      // 저장소를 이번 실행에서 붙였으면 그 전까지 빌드가 걸린 적이 없다. Railway 가
+      // 연결 직후 스스로 배포를 걸었을 수 있으니 잠깐만 보고, 없으면 여기서 건다.
+      const waitRounds = sourceAttached ? 4 : scaffoldDone ? 12 : 4;
       let active = null;
-      for (let attempt = 1; attempt <= waitRounds; attempt += 1) {
-        active = await callApi("activeDeployment", {
-          projectId: form.projectId,
-          serviceId: form.serviceId,
-          environmentId: form.environmentId,
-        }, "deploy", { silent: true });
-        if (active?.deployment?.id) break;
-        if (attempt < waitRounds) {
-          appendLog("success", "activeDeployment", `${t("lookingForActiveDeploy")} (${attempt}/${waitRounds})`);
-          await new Promise((resolve) => setTimeout(resolve, 5000));
+      // 여기서도 조회가 성공했다고 단계를 완료로 찍으면 안 된다. 아직 아무것도 안 끝났다.
+      beginWatch();
+      try {
+        for (let attempt = 1; attempt <= waitRounds; attempt += 1) {
+          active = await callApi("activeDeployment", {
+            projectId: form.projectId,
+            serviceId: form.serviceId,
+            environmentId: form.environmentId,
+          }, "deploy", { silent: true });
+          if (active?.deployment?.id) break;
+          if (attempt < waitRounds) {
+            appendLog("success", "activeDeployment", `${t("lookingForActiveDeploy")} (${attempt}/${waitRounds})`);
+            await new Promise((resolve) => setTimeout(resolve, 5000));
+          }
         }
+      } finally {
+        endWatch();
       }
-      if (!active?.deployment?.id && scaffoldDone) {
+      if (!active?.deployment?.id && scaffoldDone && !sourceAttached) {
         // 스캐폴드를 했는데 1분이 지나도 배포가 없다. 저장소 접근 설정이
         // 빠졌을 때가 대부분이라, 새로 걸기 전에 그 사실을 알린다.
+        // 이번 실행에서 저장소를 붙였다면 배포가 없는 것이 정상이므로 알리지 않는다.
         showResult("error", t("missingTitle"), t("noAutoDeployAfterPush"));
       }
       if (active?.deployment?.id) {
@@ -2039,7 +2107,7 @@ export default function RailwayDeployWizard() {
                 {running}
               </span>
             ) : null}
-            <Button onClick={runCurrentStep} disabled={stepBusy || Boolean(running)}>{buildInProgress ? t("buildingWait") : stepBusy || running ? t("running") : t("runCurrentStep")}</Button>
+            <Button onClick={runCurrentStep} disabled={stepBusy || Boolean(running) || buildInProgress}>{buildInProgress ? t("buildingWait") : stepBusy || running ? t("running") : t("runCurrentStep")}</Button>
           </div>
         </div>
 
@@ -2219,7 +2287,14 @@ export default function RailwayDeployWizard() {
                       <select
                         className={`h-11 w-full rounded-[var(--radius-md)] border bg-[var(--surface)] px-3 text-sm ${requiredBox(form.projectId)}`}
                         value={form.projectId}
-                        onChange={(event) => update("projectId", event.target.value)}
+                        onChange={(event) => {
+                          const projectId = event.target.value;
+                          update("projectId", projectId);
+                          // 고른 프로젝트의 이름을 같이 채운다. 그러지 않으면 신규 생성용
+                          // 초기값이 남아, 설치된 사이트에 엉뚱한 이름이 뜬다.
+                          const picked = projects.find((project) => project.id === projectId);
+                          if (picked?.name) update("projectName", picked.name);
+                        }}
                       >
                         <option value="">{t("selectProject")}</option>
                         {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
@@ -2337,6 +2412,9 @@ export default function RailwayDeployWizard() {
                     <Field label={t("schemaName")} hint={t("schemaNameHint")}><Input value={form.schemaName} onChange={(event) => update("schemaName", normalizeSchemaInput(event.target.value))} inputClassName={requiredBox(form.schemaName)} /></Field>
                     <Field label={t("systemCode")} hint={t("systemCodeHint")}><Input value={form.systemCode} onChange={(event) => update("systemCode", event.target.value.slice(0, 2))} inputClassName={requiredBox(form.systemCode)} /></Field>
                   </div>
+                  <Field label={t("siteName")} hint={t("siteNameHint")}>
+                    <Input value={form.brandName} onChange={(event) => update("brandName", event.target.value.slice(0, 60))} placeholder={form.projectName} />
+                  </Field>
                   <div className="flex justify-end">
                     {dbWaiting ? (
                       <p className="mt-2 text-xs font-bold leading-5 text-[var(--brand-blue)]">
@@ -2524,7 +2602,7 @@ export default function RailwayDeployWizard() {
                 <Button variant="ghost" disabled={active === 0} onClick={() => setActive((value) => Math.max(0, value - 1))}>{t("prev")}</Button>
                 <div className="flex gap-2">
                   <Button variant="ghost" disabled={active === steps.length - 1 || buildInProgress} onClick={() => goToStep(Math.min(steps.length - 1, active + 1))}>{t("next")}</Button>
-                  <Button onClick={runCurrentStep} disabled={stepBusy || Boolean(running)}>{buildInProgress ? t("buildingWait") : stepBusy || running ? t("running") : t("run")}</Button>
+                  <Button onClick={runCurrentStep} disabled={stepBusy || Boolean(running) || buildInProgress}>{buildInProgress ? t("buildingWait") : stepBusy || running ? t("running") : t("run")}</Button>
                 </div>
               </div>
             </Card>

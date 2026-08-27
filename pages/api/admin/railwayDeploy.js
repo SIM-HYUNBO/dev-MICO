@@ -550,12 +550,41 @@ async function createNextService(token, projectId, environmentId, service, authM
     }
   `;
 
+  // 만들 때 저장소를 붙이지 않는다.
+  //
+  // 왜
+  //   serviceCreate 입력에 source 가 들어가면 Railway 는 그 자리에서 빌드를 건다.
+  //   그런데 그 시점에는 환경변수가 하나도 없다. 빌드는 DB 를 안 보므로 통과하지만,
+  //   기동에서 railway_start 가 DATABASE_URL 없이 run_sql 을 돌리다 죽는다. 몇 분을
+  //   태우고 실패 하나를 남기는 배포다. 6단계가 하필 그것을 붙잡으면 정상 설치인데도
+  //   실패로 끊긴다.
+  //   그래서 껍데기만 만들고, 변수를 올린 뒤 attachServiceSource 로 저장소를 붙인다.
+  //   실제 빌드는 6단계가 한 번만 건다.
+  //
   // Railway 는 입력이 조금만 어긋나도 "Problem processing request" 만 돌려준다.
-  // 공식 예제는 projectId/name/source.repo 뿐이라, 넓은 형태부터 시도하고
-  // 거절당하면 최소 형태로 좁힌다. 어떤 형태가 통했는지 응답에 남겨 둔다.
+  // source 없는 생성을 거절하는 경우까지 생각해, 넓은 형태부터 좁혀 가며 시도하고
+  // 마지막에는 예전처럼 source 를 붙여 만든다. 어떤 형태가 통했는지 응답에 남겨 둔다.
   const candidates = [
     {
+      shape: "noSource",
+      attachesSource: false,
+      input: {
+        projectId,
+        environmentId: environmentId || undefined,
+        name: service.name,
+      },
+    },
+    {
+      shape: "noSourceMinimal",
+      attachesSource: false,
+      input: {
+        projectId,
+        name: service.name,
+      },
+    },
+    {
       shape: "full",
+      attachesSource: true,
       input: {
         projectId,
         environmentId: environmentId || undefined,
@@ -565,6 +594,7 @@ async function createNextService(token, projectId, environmentId, service, authM
     },
     {
       shape: "noBranch",
+      attachesSource: true,
       input: {
         projectId,
         environmentId: environmentId || undefined,
@@ -574,6 +604,7 @@ async function createNextService(token, projectId, environmentId, service, authM
     },
     {
       shape: "minimal",
+      attachesSource: true,
       input: {
         projectId,
         name: service.name,
@@ -587,16 +618,45 @@ async function createNextService(token, projectId, environmentId, service, authM
     try {
       const data = await railwayRequest(token, query, { input: candidate.input }, authMode);
       const created = data.serviceCreate;
-      // 브랜치를 입력에서 못 받았으면 서비스 인스턴스 쪽에서 지정한다.
-      if (created?.id && candidate.shape !== "full" && service.githubBranch && environmentId) {
+      // 브랜치를 입력에서 못 받았고 저장소는 붙었으면 서비스 인스턴스 쪽에서 지정한다.
+      if (created?.id && candidate.attachesSource && candidate.shape !== "full" && service.githubBranch && environmentId) {
         await setServiceBranch(token, created.id, environmentId, service.githubBranch, authMode).catch(() => null);
       }
-      return { serviceCreate: created, shape: candidate.shape, attempts };
+      return { serviceCreate: created, shape: candidate.shape, sourceAttached: candidate.attachesSource, attempts };
     } catch (error) {
       attempts.push({ shape: candidate.shape, error: error.message });
     }
   }
   throw new Error(`serviceCreate failed. ${attempts.map((a) => `${a.shape}: ${a.error}`).join(" | ")}`);
+}
+
+// 변수를 다 올린 뒤에 저장소를 붙인다. 이 시점부터 빌드가 걸려도 환경변수가 있다.
+// 재실행이면 이미 붙어 있는데, 같은 값으로 다시 붙이는 것은 문제가 되지 않는다.
+async function attachServiceSource(token, serviceId, environmentId, githubRepo, githubBranch, authMode = "account") {
+  if (!environmentId) throw new Error("environmentId is required to attach a source.");
+  const query = `
+    mutation BrunnerServiceSource($serviceId: String!, $environmentId: String!, $input: ServiceInstanceUpdateInput!) {
+      serviceInstanceUpdate(serviceId: $serviceId, environmentId: $environmentId, input: $input)
+    }
+  `;
+  const candidates = [
+    { shape: "sourceWithBranch", input: { source: { repo: githubRepo }, branch: githubBranch || undefined } },
+    { shape: "sourceOnly", input: { source: { repo: githubRepo } } },
+  ];
+  const attempts = [];
+  for (const candidate of candidates) {
+    try {
+      await railwayRequest(token, query, { serviceId, environmentId, input: candidate.input }, authMode);
+      // 브랜치를 같이 못 보냈으면 따로 지정한다.
+      if (candidate.shape !== "sourceWithBranch" && githubBranch) {
+        await setServiceBranch(token, serviceId, environmentId, githubBranch, authMode).catch(() => null);
+      }
+      return { attached: true, shape: candidate.shape, attempts };
+    } catch (error) {
+      attempts.push({ shape: candidate.shape, error: error.message });
+    }
+  }
+  throw new Error(`attachServiceSource failed. ${attempts.map((a) => `${a.shape}: ${a.error}`).join(" | ")}`);
 }
 
 // 서비스에 붙는 railway.app 도메인. 없으면 만들고 있으면 그대로 돌려준다.
@@ -1346,6 +1406,10 @@ export default async function handler(req, res) {
       case "createNextService":
         requireFields(req.body, ["projectId", "service"]);
         data = await createNextService(token, req.body.projectId, req.body.environmentId, req.body.service, authMode);
+        break;
+      case "attachServiceSource":
+        requireFields(req.body, ["serviceId", "environmentId", "githubRepo"]);
+        data = await attachServiceSource(token, req.body.serviceId, req.body.environmentId, req.body.githubRepo, req.body.githubBranch, authMode);
         break;
       case "activeDeployment":
         requireFields(req.body, ["projectId", "serviceId", "environmentId"]);
