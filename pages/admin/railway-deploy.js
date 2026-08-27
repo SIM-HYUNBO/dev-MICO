@@ -41,6 +41,7 @@ const i18n = {
   },
   runCurrentStep: { "en-US": "Run current step", "ko-KR": "현재 단계 실행", "ja-JP": "現在のステップを実行" },
   running: { "en-US": "Running", "ko-KR": "실행 중", "ja-JP": "実行中" },
+  buildingWait: { "en-US": "Building — please wait", "ko-KR": "빌드 중 — 기다리세요", "ja-JP": "ビルド中 — お待ちください" },
   run: { "en-US": "Run", "ko-KR": "실행", "ja-JP": "実行" },
   testConnection: { "en-US": "Test connection", "ko-KR": "접속 테스트", "ja-JP": "接続テスト" },
   prev: { "en-US": "Prev", "ko-KR": "이전", "ja-JP": "前へ" },
@@ -228,7 +229,11 @@ const i18n = {
   },
   deployTargetService: { "en-US": "Service to deploy", "ko-KR": "배포할 서비스", "ja-JP": "デプロイ対象サービス" },
   buildStatus: { "en-US": "Build status", "ko-KR": "빌드 상태", "ja-JP": "ビルド状態" },
-  buildWatching: { "en-US": "Watching the build. It usually takes 3-5 minutes.", "ko-KR": "빌드를 지켜보는 중입니다. 보통 3~5분 걸립니다.", "ja-JP": "ビルドを監視しています。通常 3〜5 分かかります。" },
+  buildWatching: {
+    "en-US": "Building. This usually takes 3-5 minutes — wait here. Running this step again while it builds starts a second deploy of the same commit.",
+    "ko-KR": "빌드 중입니다. 보통 3~5분 걸리니 이 화면에서 기다리세요. 빌드가 도는 중에 이 단계를 다시 실행하면 같은 커밋으로 배포가 한 번 더 걸립니다.",
+    "ja-JP": "ビルド中です。通常 3〜5 分かかるのでこの画面でお待ちください。ビルド中にこのステップを再実行すると、同じコミットでもう一度デプロイが走ります。",
+  },
   buildSucceeded: { "en-US": "Build succeeded. Continue to the health check step.", "ko-KR": "빌드에 성공했습니다. 기동 확인 단계로 넘어가세요.", "ja-JP": "ビルドに成功しました。起動確認ステップへ進んでください。" },
   buildLogTitle: { "en-US": "Build log", "ko-KR": "빌드 로그", "ja-JP": "ビルドログ" },
   buildFailed: { "en-US": "Build failed. Open the service in Railway and read the build log.", "ko-KR": "빌드에 실패했습니다. Railway에서 해당 서비스의 빌드 로그를 확인하세요.", "ja-JP": "ビルドに失敗しました。Railway でサービスのビルドログを確認してください。" },
@@ -1296,7 +1301,12 @@ export default function RailwayDeployWizard() {
       });
       const payload = await response.json();
       if (!payload.ok) throw new Error(payload.error || "Task failed.");
-      setStepState((prev) => ({ ...prev, [stepId]: "done" }));
+      // 배포는 API 가 배포 ID 만 돌려주고 실제 빌드는 그 뒤로 몇 분을 더 돈다.
+      // 그때 done 을 찍으면 빌드 중인데 화면은 성공으로 보인다. 지켜볼 일이
+      // 남은 호출은 watchDeployment 가 끝에서 결과를 찍게 두고 여기서는 건너뛴다.
+      if (!options.keepRunning) {
+        setStepState((prev) => ({ ...prev, [stepId]: "done" }));
+      }
       const detail = JSON.stringify(payload.data, null, 2);
       appendLog("success", action, detail);
       if (!options.silent) showResult("success", action, detail);
@@ -1574,6 +1584,24 @@ export default function RailwayDeployWizard() {
     }
   };
 
+  // 프로젝트가 만들어졌어도 토큰이 없으면 다음 단계로 넘기지 않는다.
+  // 3단계(PostgreSQL)부터 그 토큰을 쓰므로, 넘어간 뒤에 막히면 무엇이 빠졌는지
+  // 알기 어렵다. 토큰을 발급할 프로젝트가 방금 생긴 이 자리에서 붙잡는다.
+  // 빌드가 도는 중인지. 배포 단계가 실행 중이고 지켜보는 배포가 잡혀 있으면
+  // 그 사이에 실행·다음 버튼이 눌리지 않게 하고, 무엇을 기다리는지 밝힌다.
+  const buildInProgress =
+    Boolean(deployment?.id) &&
+    !["SUCCESS", "FAILED", "CRASHED", "UNKNOWN"].includes(deployment?.status || "") &&
+    stepState.deploy === "running";
+
+  const advanceFromProject = () => {
+    if (!String(form.projectToken || "").trim()) {
+      showResult("error", t("missingTitle"), t("needProjectToken"));
+      return;
+    }
+    setActive(2);
+  };
+
   const runCurrentStepInner = async () => {
     const step = steps[active].id;
     const { blockers, warnings } = stepIssues(step);
@@ -1613,13 +1641,13 @@ export default function RailwayDeployWizard() {
         if (project?.id) update("projectId", project.id);
         if (project?.id) {
           await loadProjectContext(project.id);
-          setActive(2);
+          advanceFromProject();
         }
       } else if (form.projectId) {
         setStepState((prev) => ({ ...prev, project: "done" }));
         appendLog("success", "selectProject", form.projectId);
         await loadProjectContext(form.projectId);
-        setActive(2);
+        advanceFromProject();
       }
     }
 
@@ -1832,7 +1860,7 @@ export default function RailwayDeployWizard() {
       const data = await callApi("deployService", {
         serviceId: form.serviceId,
         environmentId: form.environmentId,
-      });
+      }, "deploy", { keepRunning: true });
       const deploymentId = data?.serviceInstanceDeployV2;
       if (typeof deploymentId === "string") {
         setDeployment({ id: deploymentId, status: "PENDING" });
@@ -2011,7 +2039,7 @@ export default function RailwayDeployWizard() {
                 {running}
               </span>
             ) : null}
-            <Button onClick={runCurrentStep} disabled={stepBusy || Boolean(running)}>{stepBusy || running ? t("running") : t("runCurrentStep")}</Button>
+            <Button onClick={runCurrentStep} disabled={stepBusy || Boolean(running)}>{buildInProgress ? t("buildingWait") : stepBusy || running ? t("running") : t("runCurrentStep")}</Button>
           </div>
         </div>
 
@@ -2495,8 +2523,8 @@ export default function RailwayDeployWizard() {
               <div className="mt-5 flex flex-wrap justify-between gap-2 border-t border-[var(--border)] pt-4">
                 <Button variant="ghost" disabled={active === 0} onClick={() => setActive((value) => Math.max(0, value - 1))}>{t("prev")}</Button>
                 <div className="flex gap-2">
-                  <Button variant="ghost" disabled={active === steps.length - 1} onClick={() => goToStep(Math.min(steps.length - 1, active + 1))}>{t("next")}</Button>
-                  <Button onClick={runCurrentStep} disabled={stepBusy || Boolean(running)}>{stepBusy || running ? t("running") : t("run")}</Button>
+                  <Button variant="ghost" disabled={active === steps.length - 1 || buildInProgress} onClick={() => goToStep(Math.min(steps.length - 1, active + 1))}>{t("next")}</Button>
+                  <Button onClick={runCurrentStep} disabled={stepBusy || Boolean(running)}>{buildInProgress ? t("buildingWait") : stepBusy || running ? t("running") : t("run")}</Button>
                 </div>
               </div>
             </Card>
