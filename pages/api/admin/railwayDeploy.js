@@ -129,19 +129,38 @@ async function listProjects(token, authMode = "account", workspaceId) {
       : [];
   }
 
-  const query = `
+  // Railway 는 프로젝트를 지워도 곧바로 없애지 않는다. 한동안 목록 API 에 그대로
+  // 남아 있어서, 지운 이름으로 다시 만들려 하면 createProject 가 그 시체를 찾아
+  // "이미 있으니 재사용" 으로 넘어간다. 그다음 단계들은 삭제 중인 프로젝트에 대고
+  // 작업하다 멈춘다 — 사용자에게는 아무 설명 없이 진행이 안 되는 것으로 보인다.
+  //
+  // 그래서 deletedAt 을 함께 받아 걸러낸다. 다만 이 필드가 스키마에서 사라지면
+  // 목록 조회가 통째로 죽으므로, 거절당하면 필드 없이 한 번 더 부른다.
+  const projectFields = (withDeletedAt) =>
+    `id name description createdAt${withDeletedAt ? " deletedAt" : ""}`;
+  const buildQuery = (withDeletedAt) => `
     query BrunnerRailwayProjects($workspaceId: String) {
       projects(workspaceId: $workspaceId) {
         edges {
-          node { id name description createdAt }
+          node { ${projectFields(withDeletedAt)} }
         }
       }
     }
   `;
+
   // workspaceId 없이 부르면 개인 스코프만 조회돼 워크스페이스 프로젝트가 통째로
   // 빠진다. 목록이 항상 비어 보이던 원인이다.
-  const data = await railwayRequest(token, query, { workspaceId: workspaceId || undefined }, authMode);
-  return data.projects?.edges?.map((edge) => edge.node) || [];
+  const variables = { workspaceId: workspaceId || undefined };
+  let data;
+  try {
+    data = await railwayRequest(token, buildQuery(true), variables, authMode);
+  } catch (error) {
+    data = await railwayRequest(token, buildQuery(false), variables, authMode);
+  }
+
+  return (data.projects?.edges?.map((edge) => edge.node) || []).filter(
+    (project) => !project?.deletedAt,
+  );
 }
 
 async function createProject(token, name, description, authMode = "account", workspaceId) {
@@ -163,6 +182,22 @@ async function createProject(token, name, description, authMode = "account", wor
 
   const existing = (await listProjects(token, authMode, workspaceId)).find((project) => project.name === name);
   if (existing) {
+    // 목록에 있어도 살아 있다는 뜻은 아니다. Railway 는 삭제한 프로젝트를 한동안
+    // 남겨두는데, 그걸 재사용하면 이후 단계가 삭제 중인 프로젝트에 대고 작업하다
+    // 조용히 멈춘다. 환경을 하나라도 돌려주는지로 생존을 확인한다.
+    let alive = false;
+    try {
+      alive = (await listProjectEnvironments(token, existing.id, authMode)).length > 0;
+    } catch {
+      alive = false;
+    }
+    if (!alive) {
+      throw new Error(
+        `A project named "${name}" still appears in Railway but is not usable — it is most likely pending deletion. ` +
+          "Railway keeps deleted projects for a while before removing them. " +
+          "Use a different project name, or wait until Railway finishes deleting it.",
+      );
+    }
     return { projectCreate: existing, reused: true };
   }
 

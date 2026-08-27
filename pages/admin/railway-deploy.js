@@ -372,6 +372,11 @@ const i18n = {
     "ko-KR": "대상 저장소와 GitHub 토큰을 입력하면 이 버튼이 눌러집니다.",
     "ja-JP": "リポジトリと GitHub トークンを入力するとこのボタンが有効になります。",
   },
+  projectPendingDeletion: {
+    "en-US": "Railway keeps a deleted project around for a while before removing it, and it still shows up in the project list. The wizard found a project with this name but it is not usable. Enter a different project name, or wait until Railway finishes deleting the old one.",
+    "ko-KR": "Railway 는 삭제한 프로젝트를 바로 없애지 않고 한동안 남겨 둡니다. 목록에는 보이지만 쓸 수 없는 상태라, 같은 이름으로 만들면 그 프로젝트를 재사용하려다 멈춥니다. 다른 프로젝트 이름을 넣거나, Railway 에서 완전히 삭제될 때까지 기다렸다 다시 시도하세요.",
+    "ja-JP": "Railway は削除したプロジェクトをすぐには消さず、しばらく残します。一覧には出ますが使用できない状態のため、同じ名前で作成すると再利用しようとして止まります。別のプロジェクト名を入力するか、Railway が完全に削除するまで待ってから再試行してください。",
+  },
   projectTokenNotAuthorized: {
     "en-US": "Railway rejected the project token. A project token only works for the project it was issued for. Clear the Railway Project Token field to use the account token instead.",
     "ko-KR": "Railway 가 프로젝트 토큰을 거절했습니다. 프로젝트 토큰은 발급받은 그 프로젝트에서만 유효합니다. Railway Project Token 칸을 비우면 Account 토큰으로 진행합니다.",
@@ -1293,11 +1298,15 @@ export default function RailwayDeployWizard() {
       return payload.data;
     } catch (error) {
       setStepState((prev) => ({ ...prev, [stepId]: "error" }));
-      // Railway 가 주는 Not Authorized 만으로는 무엇을 고쳐야 할지 알 수 없다.
-      // 프로젝트 토큰을 쓰던 중이면 그것부터 의심하도록 안내를 붙인다.
-      const hint = useProjectToken && /not authorized/i.test(error.message || "")
-        ? LINE_BREAK + LINE_BREAK + t("projectTokenNotAuthorized")
-        : "";
+      // Railway 가 돌려주는 문장만으로는 무엇을 고쳐야 할지 알 수 없다.
+      // 삭제 대기 중인 프로젝트, 그리고 프로젝트 토큰의 Not Authorized 는
+      // 원인이 정해져 있으므로 무엇을 하면 되는지 붙여 준다.
+      const message = error.message || "";
+      const hint = /pending deletion/i.test(message)
+        ? LINE_BREAK + LINE_BREAK + t("projectPendingDeletion")
+        : useProjectToken && /not authorized/i.test(message)
+          ? LINE_BREAK + LINE_BREAK + t("projectTokenNotAuthorized")
+          : "";
       appendLog("error", action, error.message + hint);
       if (!options.silent) showResult("error", action, error.message + hint);
       return null;
