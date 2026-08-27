@@ -9,6 +9,23 @@ export default {
     // Or if using `src` directory:
     "./src/**/*.{js,ts,jsx,tsx,mdx}",
     "./styles/**/*.css",
+
+    // 패키지 안의 화면도 스캔한다.
+    //
+    // 왜
+    //   파생 서비스는 이 설정 파일을 그대로 복사해 쓰는데, 그쪽 저장소에는
+    //   components 폴더가 없다. 화면은 전부 node_modules/brunner-template 에서
+    //   온다. 위 글로브만 두면 Tailwind 가 컴포넌트 마크업을 한 줄도 못 보고,
+    //   거기 쓰인 유틸리티 클래스를 아예 만들지 않는다. 그러면 파생 서비스의
+    //   화면은 클래스는 붙어 있는데 규칙이 없는 상태로 떠서, 모달이 각진 흰
+    //   상자로 나오는 식으로 통째로 투박해진다. CSS 파일이 없는 것이 아니라
+    //   필요한 규칙이 안 만들어진 것이라 원인을 찾기도 어렵다.
+    //
+    //   이 저장소 자신에게는 이 경로가 없으므로 아무것도 더 만들지 않는다.
+    //   파생 서비스가 같은 파일을 복사해 가도 그대로 맞게 두려고 여기에 둔다.
+    "./node_modules/brunner-template/components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./node_modules/brunner-template/pages/**/*.{js,ts,jsx,tsx,mdx}",
+    "./node_modules/brunner-template/lib/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   darkMode: ["class", ".dark"],
   theme: {
