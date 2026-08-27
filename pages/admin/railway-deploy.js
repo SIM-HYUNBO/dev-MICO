@@ -163,9 +163,9 @@ const i18n = {
   schemaName: { "en-US": "DB_SCHEMA", "ko-KR": "DB_SCHEMA", "ja-JP": "DB_SCHEMA" },
   systemCode: { "en-US": "SYSTEM_CODE", "ko-KR": "SYSTEM_CODE", "ja-JP": "SYSTEM_CODE" },
   schemaNameHint: {
-    "en-US": "PostgreSQL schema to create or reuse. Keep the default when this system has its own database. Avoid another service's schema name when the database is shared. The same value is registered in AP service variables.",
-    "ko-KR": "생성하거나 재사용할 PostgreSQL 스키마입니다. 이 시스템 전용 DB라면 기본값 그대로 두어도 됩니다. 다른 서비스와 DB를 공유한다면 그 서비스가 쓰는 이름은 피하세요. 같은 값이 AP 서비스 환경변수에도 등록됩니다.",
-    "ja-JP": "作成または再利用する PostgreSQL スキーマです。このシステム専用の DB なら既定値のままで構いません。DB を共有する場合は他サービスの名前を避けてください。同じ値を AP サービス環境変数にも登録します。",
+    "en-US": "PostgreSQL schema to create or reuse. Lowercase letters, digits and underscore only — a hyphen cannot appear in an unquoted identifier, so a hyphen, space or dot you type becomes an underscore (my-schema becomes my_schema) and anything else is dropped. Keep the default when this system has its own database. Avoid another service's schema name when the database is shared. The same value is registered in AP service variables.",
+    "ko-KR": "생성하거나 재사용할 PostgreSQL 스키마입니다. 소문자·숫자·밑줄만 쓸 수 있습니다 — 하이픈은 식별자에 넣을 수 없어, 하이픈·공백·점을 치면 밑줄로 바뀝니다(my-schema → my_schema). 그 외 글자는 입력하는 대로 걸러집니다. 이 시스템 전용 DB라면 기본값 그대로 두어도 됩니다. 다른 서비스와 DB를 공유한다면 그 서비스가 쓰는 이름은 피하세요. 같은 값이 AP 서비스 환경변수에도 등록됩니다.",
+    "ja-JP": "作成または再利用する PostgreSQL スキーマです。小文字・数字・アンダースコアのみ使えます — ハイフンは識別子に使えないため、ハイフン・空白・ドットはアンダースコアに変換されます（my-schema → my_schema）。それ以外の文字は入力時に取り除かれます。このシステム専用の DB なら既定値のままで構いません。DB を共有する場合は他サービスの名前を避けてください。同じ値を AP サービス環境変数にも登録します。",
   },
   systemCodeHint: {
     "en-US": "Tenant code for initial dynamic SQL and resource seed rows, 1-2 characters. The same value is registered as SYSTEM_CODE.",
@@ -466,24 +466,24 @@ const i18n = {
     "ja-JP": "10 分間ビルドの最終状態が得られず監視を停止しました。Railway でデプロイ状態を確認してください。",
   },
   projectTokenOptionalHint: {
-    "en-US": "Optional. Leave it blank to use the account token for every step. Only fill it in with a token issued for the project you selected above.",
-    "ko-KR": "선택 입력입니다. 비워두면 모든 단계에서 Account 토큰을 씁니다. 위에서 고른 그 프로젝트용으로 발급한 토큰일 때만 넣으세요.",
-    "ja-JP": "任意です。空欄なら全ステップで Account トークンを使用します。上で選んだプロジェクト用に発行したトークンの場合のみ入力してください。",
+    "en-US": "Optional. Leave it blank to use the account token for every step. A project token exists only after the project does, so when creating a new project leave this blank, run the step, then come back and paste a token issued for the project that was just created.",
+    "ko-KR": "선택 입력입니다. 비워두면 모든 단계에서 Account 토큰을 씁니다. 프로젝트 토큰은 프로젝트가 만들어진 뒤에야 발급할 수 있으므로, 신규 생성이라면 비워둔 채로 이 단계를 실행하고 만들어진 프로젝트에서 토큰을 발급해 그때 넣으세요.",
+    "ja-JP": "任意です。空欄なら全ステップで Account トークンを使用します。プロジェクトトークンはプロジェクト作成後にのみ発行できるため、新規作成の場合は空欄のままこのステップを実行し、作成されたプロジェクトで発行したトークンを後から入力してください。",
   },
   prereqAllHere: {
-    "en-US": "The four values below are used all the way to the last step. Enter them once here and the later steps read them from here instead of asking again.",
-    "ko-KR": "아래 네 개 값은 마지막 단계까지 계속 쓰입니다. 여기서 한 번만 입력해 두면 뒤 단계에서는 다시 묻지 않고 읽기 전용으로 가져다 씁니다.",
-    "ja-JP": "以下の 4 つの値は最後のステップまで使います。ここで一度入力しておけば、後のステップでは再度尋ねずに読み取り専用で参照します。",
+    "en-US": "The three values below are used all the way to the last step. Enter them once here and the later steps read them from here instead of asking again.",
+    "ko-KR": "아래 세 개 값은 마지막 단계까지 계속 쓰입니다. 여기서 한 번만 입력해 두면 뒤 단계에서는 다시 묻지 않고 읽기 전용으로 가져다 씁니다.",
+    "ja-JP": "以下の 3 つの値は最後のステップまで使います。ここで一度入力しておけば、後のステップでは再度尋ねずに読み取り専用で参照します。",
   },
   bulkPasteTitle: {
-    "en-US": "Paste all four values at once",
-    "ko-KR": "네 개 값 한 번에 붙여넣기",
-    "ja-JP": "4 つの値をまとめて貼り付け",
+    "en-US": "Paste all three values at once",
+    "ko-KR": "세 개 값 한 번에 붙여넣기",
+    "ja-JP": "3 つの値をまとめて貼り付け",
   },
   bulkPasteHint: {
-    "en-US": "Paste each value after its label below. You can also delete the labels and paste four bare values — order does not matter, they are sorted by shape. The fields below fill in as you type, and each one can still be edited afterwards. A full repository URL is trimmed to owner/repo.",
-    "ko-KR": "아래 각 라벨 뒤에 값을 붙여넣으세요. 라벨 줄을 지우고 값만 네 줄 넣어도 되고, 순서가 달라도 값 모양으로 알아서 나눠 담습니다. 넣는 대로 아래 칸이 채워지고, 채운 뒤에도 각 칸은 그대로 고칠 수 있습니다. 저장소는 주소를 통째로 붙여넣어도 owner/repo 로 정리합니다.",
-    "ja-JP": "下の各ラベルの後ろに値を貼り付けてください。ラベル行を消して値だけ 4 行入れても構いません。順序が違っても値の形で振り分けます。入力すると下の欄が埋まり、後から各欄を編集できます。リポジトリは URL をそのまま貼っても owner/repo に整形します。",
+    "en-US": "Paste each value after its label below. You can also delete the labels and paste three bare values — order does not matter, they are sorted by shape. The fields below fill in as you type, and each one can still be edited afterwards. A full repository URL is trimmed to owner/repo.",
+    "ko-KR": "아래 각 라벨 뒤에 값을 붙여넣으세요. 라벨 줄을 지우고 값만 세 줄 넣어도 되고, 순서가 달라도 값 모양으로 알아서 나눠 담습니다. 넣는 대로 아래 칸이 채워지고, 채운 뒤에도 각 칸은 그대로 고칠 수 있습니다. 저장소는 주소를 통째로 붙여넣어도 owner/repo 로 정리합니다.",
+    "ja-JP": "下の各ラベルの後ろに値を貼り付けてください。ラベル行を消して値だけ 3 行入れても構いません。順序が違っても値の形で振り分けます。入力すると下の欄が埋まり、後から各欄を編集できます。リポジトリは URL をそのまま貼っても owner/repo に整形します。",
   },
   bulkPasteFilled: { "en-US": "Filled", "ko-KR": "채운 항목", "ja-JP": "入力済み" },
   bulkPasteNothing: {
@@ -609,13 +609,29 @@ const bulkFieldLabelKeys = {
 // 값이 빈 줄은 파서가 그냥 건너뛰므로 아래 입력칸이 엉뚱하게 채워지지 않는다.
 const bulkPasteTemplateLines = [
   "Railway Account Token:",
-  "Railway Project Token:",
   "GitHub Repository:",
   "GitHub Token:",
 ];
 const bulkPasteTemplate = bulkPasteTemplateLines.join(LINE_BREAK);
 const githubTokenShape = /^(ghp_|gho_|ghu_|ghs_|ghr_|github_pat_)/;
 const repoShape = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+
+// 스키마 이름은 따옴표 없이 SQL 에 박히는 식별자다. PostgreSQL 이 받아주는 글자만
+// 남긴다 — 소문자·숫자·밑줄이고, 첫 글자는 숫자일 수 없다.
+//
+// 특히 하이픈을 조심해야 한다. my-schema 는 식별자가 아니라 "my 빼기 schema" 로
+// 파싱된다. 쓰려면 따옴표로 감싸야 하는데, 그러면 참조하는 모든 자리에서 감싸야
+// 하고 한 군데만 빠뜨리면 "테이블이 없다"로 나타난다. 아예 못 넣게 막는다.
+const normalizeSchemaInput = (value) =>
+  String(value || "")
+    .toLowerCase()
+    // 하이픈·공백·점을 친 사람은 구분자를 원한 것이다. 글자를 없애 myschema 로
+    // 만들면 의도와 다른 이름이 조용히 만들어지므로 밑줄로 바꾼다.
+    .replace(/[\s.\-]+/g, "_")
+    .replace(/[^a-z0-9_]/g, "")
+    // 식별자는 숫자로 시작할 수 없다. 밑줄로 시작하는 것은 허용된다.
+    .replace(/^[0-9]+/, "")
+    .slice(0, 63);
 
 // 저장소는 owner/repo 로 넣지만 브라우저 주소창을 통째로 복사해 오는 일이 잦다.
 const normalizeRepo = (value) => {
@@ -1680,7 +1696,17 @@ export default function RailwayDeployWizard() {
         schemaName: form.schemaName,
         systemCode: form.systemCode,
       });
-      if (data) setActive(4);
+      if (data) {
+        if (form.projectId && form.environmentId && form.serviceId) {
+          await callApi("upsertVariables", {
+            projectId: form.projectId,
+            environmentId: form.environmentId,
+            serviceId: form.serviceId,
+            variables: appEnvVars,
+          }, "schema", { silent: true });
+        }
+        setActive(4);
+      }
     }
 
     if (step === "service") {
@@ -2038,9 +2064,6 @@ export default function RailwayDeployWizard() {
                     <Field label={t("railwayAccountToken")} hint={t("railwayAccountTokenHint")}>
                       <Input type="password" value={form.accountToken} onChange={(event) => update("accountToken", event.target.value)} placeholder="account or workspace token" inputClassName={requiredBox(form.accountToken)} />
                     </Field>
-                    <Field label={`${t("railwayProjectToken")} (${t("optional")})`} hint={t("projectTokenOptionalHint")}>
-                      <Input type="password" value={form.projectToken} onChange={(event) => update("projectToken", event.target.value)} placeholder="project token" />
-                    </Field>
                     <Field label={t("gitRepository")} hint={t("prereq3")}>
                       {/* 타이핑 중에 정리하면 owner/ 의 슬래시가 지워져 더 못 친다. 칸을 떠날 때만 정리한다. */}
                       <Input icon={<GitBranch size={16} />} value={form.githubRepo} onChange={(event) => update("githubRepo", event.target.value)} onBlur={(event) => update("githubRepo", normalizeRepo(event.target.value))} placeholder="owner/repo" inputClassName={requiredBox(form.githubRepo)} />
@@ -2148,6 +2171,11 @@ export default function RailwayDeployWizard() {
                       inputClassName={form.projectMode === "existing" ? requiredBox(form.projectId) : ""}
                     />
                   </Field>
+                  {/* 프로젝트 토큰은 프로젝트가 있어야 발급된다. 그래서 계정 토큰과 함께
+                      1단계에서 묻지 않고, 프로젝트가 정해지는 이 단계에 둔다. */}
+                  <Field label={`${t("railwayProjectToken")} (${t("optional")})`} hint={t("projectTokenOptionalHint")}>
+                    <Input type="password" value={form.projectToken} onChange={(event) => update("projectToken", event.target.value)} placeholder="project token" />
+                  </Field>
                 </div>
               )}
 
@@ -2193,7 +2221,7 @@ export default function RailwayDeployWizard() {
                         </Button>
                       </div>
                     </Field>
-                    <Field label={t("schemaName")} hint={t("schemaNameHint")}><Input value={form.schemaName} onChange={(event) => update("schemaName", event.target.value)} inputClassName={requiredBox(form.schemaName)} /></Field>
+                    <Field label={t("schemaName")} hint={t("schemaNameHint")}><Input value={form.schemaName} onChange={(event) => update("schemaName", normalizeSchemaInput(event.target.value))} inputClassName={requiredBox(form.schemaName)} /></Field>
                     <Field label={t("systemCode")} hint={t("systemCodeHint")}><Input value={form.systemCode} onChange={(event) => update("systemCode", event.target.value.slice(0, 2))} inputClassName={requiredBox(form.systemCode)} /></Field>
                   </div>
                   <div className="flex justify-end">
@@ -2243,7 +2271,7 @@ export default function RailwayDeployWizard() {
                     </Field>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
-                    <Field label={t("schemaName")} hint={t("schemaNameHint")}><Input value={form.schemaName} onChange={(event) => update("schemaName", event.target.value)} inputClassName={requiredBox(form.schemaName)} /></Field>
+                    <Field label={t("schemaName")} hint={t("schemaNameHint")}><Input value={form.schemaName} onChange={(event) => update("schemaName", normalizeSchemaInput(event.target.value))} inputClassName={requiredBox(form.schemaName)} /></Field>
                     <Field label={t("systemCode")} hint={t("systemCodeHint")}><Input value={form.systemCode} onChange={(event) => update("systemCode", event.target.value.slice(0, 2))} inputClassName={requiredBox(form.systemCode)} /></Field>
                   </div>
                   <div className="flex justify-end">

@@ -1,5 +1,5 @@
 import { logger } from "@/components/core/server/winston/logger.js";
-import { SCHEMA } from "@/lib/dbSchema.js";
+import { qualifiedTable } from "@/lib/dbSchema.js";
 import * as constants from "@/lib/constants.js";
 import * as commonFunctions from "@/lib/commonFunctions.js";
 import * as database from "./database/database.js";
@@ -352,7 +352,7 @@ async function loadAll() {
 
   var sql = `
       SELECT *
-        FROM ${SCHEMA}.TB_COR_SQL_INFO
+        FROM ${qualifiedTable("TB_COR_SQL_INFO")}
        ORDER BY SYSTEM_CODE, SQL_NAME, SQL_SEQ, SQL_CONTENT
        ;
     `;

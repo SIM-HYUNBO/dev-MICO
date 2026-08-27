@@ -753,9 +753,20 @@ function getSslConfig(connectionString) {
   return false;
 }
 
+// 스키마 이름은 소문자로 접어서 만든다.
+//
+// PostgreSQL 은 따옴표 없는 식별자를 소문자로 접는다. 대소문자를 살리면 참조하는
+// 모든 자리(런타임 쿼리·SQL 스크립트·백업 스크립트·psql 수동 조회)에서 따옴표를
+// 씌워야 하고, 한 군데만 빠뜨리면 "테이블이 없다"로 나타난다. 살려서 얻는 것이
+// 없으므로 입력 단계에서 접는다. 사용자가 MySchema 라고 넣어도 myschema 가 된다.
 function normalizeSchemaName(value) {
-  const schemaName = String(value || "").trim();
-  if (!/^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(schemaName)) {
+  // 화면과 같은 규칙으로 접는다. 화면을 거치지 않고 API 를 직접 부르는 경로가
+  // 있으므로 여기서도 해야 한다. 하이픈·공백·점은 구분자로 보고 밑줄로 바꾼다.
+  const schemaName = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.\-]+/g, "_");
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(schemaName)) {
     throw new Error("DB_SCHEMA must be a PostgreSQL identifier, for example brunner or zicp.");
   }
   return schemaName;

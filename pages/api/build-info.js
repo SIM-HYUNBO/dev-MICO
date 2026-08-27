@@ -1,5 +1,6 @@
 import { describePushConfig } from "@/lib/webPush";
 import { getDbBackupStatus } from "@/lib/dbBackupCron";
+import { SCHEMA } from "@/lib/dbSchema";
 
 export default async function handler(req, res) {
   // Keep this endpoint lightweight because deploy checks poll it frequently.
@@ -50,7 +51,9 @@ export default async function handler(req, res) {
     // 노출하지 않고 구성 여부와 연결 성공 여부만 보고한다.
     db: {
       urlConfigured: has("DATABASE_URL"),
-      schema: process.env.DB_SCHEMA || null,
+      // 원본 env 가 아니라 실제로 쓰는 값을 보고한다. 스키마는 소문자로 접히므로
+      // 둘이 다를 수 있고, 진단 화면이 다른 값을 보여주면 원인을 엉뚱한 데서 찾게 된다.
+      schema: SCHEMA || null,
       schemaOwned: String(process.env.DB_SCHEMA_OWNED || "").toLowerCase() === "true",
       systemCode: process.env.SYSTEM_CODE || null,
     },

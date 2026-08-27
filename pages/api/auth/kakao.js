@@ -1,7 +1,7 @@
 ﻿"use strict";
 
 import * as database from "@/pages/api/biz/database/database";
-import { SCHEMA } from "@/lib/dbSchema";
+import { qualifiedTable } from "@/lib/dbSchema";
 import * as dynamicSql from "@/pages/api/biz/dynamicSql";
 import * as constants from "@/lib/constants";
 import { logger } from "@/components/core/server/winston/logger";
@@ -72,7 +72,7 @@ async function readUserById(userId, SYSTEM_CODE) {
   const result = await database.executeSQL(
     `SELECT user_id, user_name, email_id, admin_flag, user_type,
             register_no, register_name, profile_image_src
-       FROM ${SCHEMA}.TB_COR_USER_MST
+       FROM ${qualifiedTable("TB_COR_USER_MST")}
       WHERE system_code = $1 AND user_id = $2
       LIMIT 1`,
     [SYSTEM_CODE, userId],
