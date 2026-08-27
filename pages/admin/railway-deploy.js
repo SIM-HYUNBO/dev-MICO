@@ -274,9 +274,9 @@ const i18n = {
   },
   serviceUrl: { "en-US": "Service URL", "ko-KR": "서비스 URL", "ja-JP": "サービス URL" },
   healthDesc: {
-    "en-US": "A response with an HTTP status below 500 is treated as a successful startup signal.",
-    "ko-KR": "HTTP 상태가 500 미만이면 기동 성공 신호로 판단합니다.",
-    "ja-JP": "HTTP ステータスが 500 未満なら起動成功として扱います。",
+    "en-US": "Two checks run here. First the service URL must answer with an HTTP status below 500. Then the app reports its own state at /api/build-info, and DATABASE_URL, DB_SCHEMA and SYSTEM_CODE must all be in place. The site opening in a browser only clears the first check.",
+    "ko-KR": "여기서는 검사를 두 번 합니다. 먼저 서비스 URL 이 HTTP 500 미만으로 응답해야 하고, 그다음 앱이 /api/build-info 로 자기 상태를 보고해 DATABASE_URL·DB_SCHEMA·SYSTEM_CODE 가 모두 갖춰져 있어야 합니다. 브라우저에서 사이트가 열리는 것은 첫 번째 검사만 통과한 것입니다.",
+    "ja-JP": "ここでは検査を 2 回行います。まずサービス URL が HTTP 500 未満で応答し、次にアプリが /api/build-info で自身の状態を報告して DATABASE_URL・DB_SCHEMA・SYSTEM_CODE が揃っている必要があります。ブラウザでサイトが開くのは最初の検査を通っただけです。",
   },
   variablePreview: { "en-US": "Variable preview", "ko-KR": "환경변수 미리보기", "ja-JP": "変数プレビュー" },
   dbService: { "en-US": "DB service", "ko-KR": "DB 서비스", "ja-JP": "DB サービス" },
@@ -490,6 +490,32 @@ const i18n = {
     "ja-JP": "インストールがまだ完了していません",
   },
   verifyVersion: { "en-US": "Version", "ko-KR": "버전", "ja-JP": "バージョン" },
+  checkAppRunning: { "en-US": "App is running", "ko-KR": "앱 기동", "ja-JP": "アプリ起動" },
+  checkDatabaseConfigured: { "en-US": "DATABASE_URL is set", "ko-KR": "DATABASE_URL 설정", "ja-JP": "DATABASE_URL 設定" },
+  checkSchemaSet: { "en-US": "DB_SCHEMA is set", "ko-KR": "DB_SCHEMA 설정", "ja-JP": "DB_SCHEMA 設定" },
+  checkSystemCodeSet: { "en-US": "SYSTEM_CODE is set", "ko-KR": "SYSTEM_CODE 설정", "ja-JP": "SYSTEM_CODE 設定" },
+  checkRedisConfigured: { "en-US": "REDIS_URL is set", "ko-KR": "REDIS_URL 설정", "ja-JP": "REDIS_URL 設定" },
+  checkRedisConnected: { "en-US": "Redis is connected", "ko-KR": "Redis 연결", "ja-JP": "Redis 接続" },
+  verifyRedisSkipped: {
+    "en-US": "Redis was not set up, so its checks were skipped. Redis is optional while the app runs a single replica.",
+    "ko-KR": "Redis 를 만들지 않아 관련 검사를 건너뛰었습니다. 앱이 한 벌로 도는 동안 Redis 는 선택 사항입니다.",
+    "ja-JP": "Redis を作成していないため関連チェックを省略しました。レプリカが 1 つの間、Redis は任意です。",
+  },
+  verifyRedisWarn: {
+    "en-US": "Redis is set up but the app is not using it. The app connects to Redis once at startup, so it stays disconnected if Redis came up later. Redeploy the app service to fix it. The install itself is complete.",
+    "ko-KR": "Redis 는 만들어졌는데 앱이 쓰고 있지 않습니다. 앱은 기동할 때 한 번만 Redis 에 붙으므로, Redis 가 나중에 떴으면 붙지 않은 채로 남습니다. 앱 서비스를 다시 배포하면 됩니다. 설치 자체는 끝난 상태입니다.",
+    "ja-JP": "Redis はありますがアプリが使用していません。アプリは起動時に一度だけ接続するため、Redis が後から起動した場合は未接続のままです。アプリサービスを再デプロイしてください。インストール自体は完了しています。",
+  },
+  verifyRedisRequired: {
+    "en-US": "Replicas are set above 1, so Redis is required. Run step 7 (Redis), or set replicas back to 1.",
+    "ko-KR": "복제본을 2 이상으로 두었으므로 Redis 가 반드시 있어야 합니다. 7단계(Redis)를 실행하거나 복제본을 1 로 되돌리세요.",
+    "ja-JP": "レプリカを 2 以上にしているため Redis が必須です。ステップ7(Redis)を実行するか、レプリカを 1 に戻してください。",
+  },
+  verifyCallFailed: {
+    "en-US": "Could not read the installed app status. Check that the service URL is right and that /api/build-info answers at that address.",
+    "ko-KR": "설치된 앱의 상태를 읽지 못했습니다. 서비스 URL 이 맞는지, 그 주소의 /api/build-info 가 응답하는지 확인하세요.",
+    "ja-JP": "インストール済みアプリの状態を読み取れませんでした。サービス URL と /api/build-info の応答を確認してください。",
+  },
   verifyStartedAt: { "en-US": "Process started", "ko-KR": "프로세스 기동", "ja-JP": "プロセス起動" },
   buildWatchTimeout: {
     "en-US": "Stopped watching after 10 minutes without a final build status. Open the service in Railway and check the deployment.",
@@ -2095,21 +2121,42 @@ export default function RailwayDeployWizard() {
       // 앞 단계에서 앱이 막 다시 떴을 수 있다. 그때는 URL 이 잠깐 502 를 주거나,
       // 응답은 해도 Redis 연결이 아직 안 붙어 있다. 한 번 보고 실패로 끊으면
       // 멀쩡한 설치가 "완료되지 않았습니다" 로 보인다. 잠깐 지켜본다.
+      // Redis 를 언제 검사할 것인가.
+      //
+      //   전에는 체크박스(redisEnabled) 하나만 보고 검사했다. 그 값은 기본이 켬이고,
+      //   7단계를 실행하지 않고 지나가도 켜진 채로 남는다. 그래서 Redis 를 만들지
+      //   않은 사람에게 REDIS_URL 설정과 Redis 연결이 둘 다 실패로 찍혔고, 멀쩡히
+      //   도는 설치가 "설치가 완료되지 않았습니다" 로 끝났다. Redis 는 선택 사항인데
+      //   안 골랐다고 실패로 판정한 셈이다.
+      //
+      //   실제로 반드시 있어야 하는 경우는 복제본이 둘 이상일 때뿐이다(7단계가 이미
+      //   같은 기준으로 막는다). 그 밖에는 Redis 를 만들었을 때만 상태를 확인하고,
+      //   결과가 나빠도 설치 실패로 보지 않고 경고로 알린다.
+      const redisRequired = Boolean(form.redisEnabled) && Number(form.appReplicas) > 1;
+      const redisExpected = redisRequired || Boolean(form.redisServiceId);
+
       const attempts = 12;
       let health = null;
       let verified = null;
-      for (let attempt = 1; attempt <= attempts; attempt += 1) {
-        setVerifyWaiting({ attempt, attempts });
-        health = await callApi("checkHealth", { url: healthUrl }, "health", { silent: true });
-        if (health?.ok) {
-          // 앱이 자기 상태를 보고하게 해서 DB·Redis 까지 확인한다.
-          verified = await callApi("verifyInstall", {
-            url: healthUrl,
-            expectRedis: Boolean(form.redisEnabled),
-          }, "health", { silent: true });
-          if (verified?.ok) break;
+      // 되풀이해 보는 동안에는 조회 하나하나가 단계 상태를 확정하면 안 된다.
+      // 결론은 이 루프가 끝난 뒤에 낸다.
+      beginWatch();
+      try {
+        for (let attempt = 1; attempt <= attempts; attempt += 1) {
+          setVerifyWaiting({ attempt, attempts });
+          health = await callApi("checkHealth", { url: healthUrl }, "health", { silent: true });
+          if (health?.ok) {
+            // 앱이 자기 상태를 보고하게 해서 DB·Redis 까지 확인한다.
+            verified = await callApi("verifyInstall", {
+              url: healthUrl,
+              expectRedis: redisExpected,
+            }, "health", { silent: true });
+            if (verified?.ok) break;
+          }
+          if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, 10000));
         }
-        if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, 10000));
+      } finally {
+        endWatch();
       }
       setVerifyWaiting(null);
       if (!health?.ok) {
@@ -2117,17 +2164,48 @@ export default function RailwayDeployWizard() {
         showResult("error", t("missingTitle"), t("healthHttpFailed") + LINE_BREAK + JSON.stringify(health, null, 2));
         return;
       }
-      if (!verified) return;
-      const lines = Object.entries(verified.checks || {})
+      // 전에는 여기서 그냥 return 했다. callApi 가 이미 단계를 빨갛게 칠해 둔
+      // 뒤라 사용자에게는 이유 없는 에러만 남았다.
+      if (!verified) {
+        setStepState((prev) => ({ ...prev, health: "error" }));
+        showResult("error", t("verifyFailed"), t("verifyCallFailed"));
+        return;
+      }
+      // 항목 이름을 원문 키(appRunning, redisConfigured …)로 내보내면 무엇이
+      // 걸렸는지 읽히지 않는다. 브라우저 번역기가 켜져 있으면 더 나빠서,
+      // redisConfigured 가 "재구성", redisConnected 가 "연결 끊김" 으로 뭉개진다.
+      const checkLabelKeys = {
+        appRunning: "checkAppRunning",
+        databaseConfigured: "checkDatabaseConfigured",
+        schemaSet: "checkSchemaSet",
+        systemCodeSet: "checkSystemCodeSet",
+        redisConfigured: "checkRedisConfigured",
+        redisConnected: "checkRedisConnected",
+      };
+      const checks = verified.checks || {};
+      const lines = Object.entries(checks)
         .filter(([, value]) => value !== null)
-        .map(([key, value]) => `${value ? "OK" : "FAIL"}  ${key}`);
+        .map(([key, value]) => `${value ? "OK" : "--"}  ${checkLabelKeys[key] ? t(checkLabelKeys[key]) : key}`);
+
+      // 설치가 안 된 것과, 설치는 됐는데 Redis 만 덜 붙은 것은 다르다.
+      const coreFailed = ["databaseConfigured", "schemaSet", "systemCodeSet"].filter((key) => checks[key] === false);
+      const redisFailed = checks.redisConfigured === false || checks.redisConnected === false;
+      const note = !redisExpected
+        ? t("verifyRedisSkipped")
+        : redisFailed && redisRequired
+          ? t("verifyRedisRequired")
+          : redisFailed
+            ? t("verifyRedisWarn")
+            : "";
       const detail = [
         `${t("verifyVersion")}: ${verified.version || "-"}`,
         `${t("verifyStartedAt")}: ${verified.startedAt || "-"}`,
         "",
         ...lines,
+        ...(note ? ["", note] : []),
       ].join(LINE_BREAK);
-      if (!verified.ok) {
+
+      if (coreFailed.length || (redisFailed && redisRequired)) {
         setStepState((prev) => ({ ...prev, health: "error" }));
         showResult("error", t("verifyFailed"), detail);
         return;

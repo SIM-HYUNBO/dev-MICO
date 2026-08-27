@@ -391,6 +391,22 @@ neutral, stone
      기본 스타일들
    =============================== */
 
+  /* 햄버거 드롭다운 패널의 위치와 최대 높이.
+
+     왜 인라인 style 이 아니라 클래스인가
+       dvh 를 모르는 브라우저(안드로이드 WebView 108 미만 등)에서는 max-height
+       선언 자체가 무효가 된다. 그러면 패널에 높이 제한이 없어져 화면 아래로
+       흘러나가고, 목록이 스크롤되는 대신 아래쪽이 화면 밖으로 잘린다. 바닥에
+       붙어 있는 설정·문의 버튼 줄이 먼저 사라진다. 인라인 style 객체는 같은
+       속성을 두 번 쓸 수 없어 대비를 넣을 수 없으므로 여기로 옮긴다.
+       vh 를 먼저 두고 dvh 로 덮으면, 아는 브라우저는 dvh 를 쓰고 모르는
+       브라우저는 vh 로 떨어진다. */
+  .dropdown-menu-panel {
+    top: calc(var(--site-header-height, 56px) + 8px);
+    max-height: calc(100vh - var(--site-header-height, 56px) - 24px);
+    max-height: calc(100dvh - var(--site-header-height, 56px) - 24px);
+  }
+
   .header {
     @apply fixed
            w-full
