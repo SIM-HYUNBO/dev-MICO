@@ -965,6 +965,14 @@ export default function RailwayDeployWizard() {
     const data = await callApi("listServices", { projectId }, "project", { silent: true });
     const services = data?.services || [];
     setProjectServices(services);
+    const existingApp = services.find((service) => (
+      service.name === form.serviceName &&
+      !/postgres|postgresql|database|\bdb\b|redis/i.test(serviceText(service))
+    ));
+    if (!form.serviceId && existingApp?.id) {
+      update("serviceId", existingApp.id);
+      setStepState((prev) => ({ ...prev, service: "done" }));
+    }
     return services;
   };
 
@@ -1390,14 +1398,16 @@ export default function RailwayDeployWizard() {
         // 변수를 올린 뒤에 저장소를 붙인다. 순서가 반대면 Railway 가 저장소를 붙이는
         // 순간 빌드를 거는데, 그때는 DATABASE_URL 이 없어 기동에서 죽는다. 몇 분을
         // 태우고 실패 하나를 남기며, 6단계가 그것을 붙잡으면 정상 설치가 실패로 끊긴다.
-        const attached = await callApi("attachServiceSource", {
-          serviceId,
-          environmentId: form.environmentId,
-          githubRepo: form.githubRepo,
-          githubBranch: form.githubBranch,
-        }, "service", { silent: true });
-        if (!attached) return; // 저장소가 안 붙으면 6단계에서 배포할 것이 없다.
-        setSourceAttached(true);
+        if (!data?.reused) {
+          const attached = await callApi("attachServiceSource", {
+            serviceId,
+            environmentId: form.environmentId,
+            githubRepo: form.githubRepo,
+            githubBranch: form.githubBranch,
+          }, "service", { silent: true });
+          if (!attached) return; // 저장소가 안 붙으면 6단계에서 배포할 것이 없다.
+          setSourceAttached(true);
+        }
         // 도메인이 있어야 8단계에서 확인할 주소가 생긴다.
         const domainData = await callApi("ensureServiceDomain", {
           projectId: form.projectId,

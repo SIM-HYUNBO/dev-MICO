@@ -646,11 +646,7 @@ async function createRedisService(token, projectId, environmentId, name, authMod
 async function createNextService(token, projectId, environmentId, service, authMode = "account") {
   const existing = await findServiceByName(token, projectId, service.name, authMode);
   if (existing) {
-    await deleteService(token, existing.id, authMode);
-    const deleted = await waitForServiceDeletion(token, projectId, service.name, authMode, existing.id);
-    if (!deleted) {
-      throw new Error(`Existing NextJS service "${service.name}" was deleted but still appears in Railway. Retry after Railway finishes deletion.`);
-    }
+    return { serviceCreate: existing, reused: true, sourceAttached: true, attempts: [] };
   }
 
   const query = `
@@ -829,7 +825,7 @@ async function findActiveDeployment(token, projectId, serviceId, environmentId, 
   }, authMode).catch(() => null);
   const nodes = data?.deployments?.edges?.map((edge) => edge.node) || [];
   const running = new Set(["BUILDING", "DEPLOYING", "INITIALIZING", "QUEUED", "WAITING"]);
-  return nodes.find((node) => running.has(node.status)) || null;
+  return nodes.find((node) => running.has(node.status)) || nodes.find((node) => node.status === "SUCCESS") || null;
 }
 
 // 실패 원인을 보려고 Railway 콘솔로 넘어가야 했다. 마법사 안에서 바로 읽는다.
