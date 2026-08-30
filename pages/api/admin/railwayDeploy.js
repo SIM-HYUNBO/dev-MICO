@@ -906,7 +906,7 @@ function retargetInstallSchemaTokens(sql, schemaName) {
         `${schemaIdent}.`,
       )
       .replace(new RegExp(`(\\btable_schema\\s*=\\s*)'${source}'`, "gi"), `$1'${escapeSqlLiteral(schemaName)}'`)
-      .replace(new RegExp(`'${source}'::regnamespace`, "g"), `'${escapeSqlLiteral(schemaIdent)}'::regnamespace`);
+      .replace(new RegExp(`'${source}'::regnamespace`, "g"), `'${escapeSqlLiteral(schemaName)}'::regnamespace`);
   }, sql);
 }
 
@@ -1012,12 +1012,14 @@ function retargetSqlContent(sqlContent, { sourceSchema, targetSchema, sourceSyst
   const safeTarget = escapeSqlLiteral(targetSystemCode);
   const safeSource = escapeSqlLiteral(sourceSystemCode);
   const targetSchemaIdent = quoteIdent(targetSchema);
-  const sourceSchemaPrefix = new RegExp(
-    `\\b${escapeRegExp(sourceSchema)}\\.(?=(?:TB_|tb_|IDX_|idx_|UQ_|uq_|[A-Za-z0-9_]+_pkey|%I))`,
-    "g",
-  );
-  return String(sqlContent || "")
-    .replace(sourceSchemaPrefix, `${targetSchemaIdent}.`)
+  return INSTALL_SOURCE_SCHEMAS.reduce((retargeted, sourceSchemaName) => {
+    if (sourceSchemaName === targetSchema) return retargeted;
+    const sourceSchemaPrefix = new RegExp(
+      `\\b${escapeRegExp(sourceSchemaName)}\\.(?=(?:TB_|tb_|IDX_|idx_|UQ_|uq_|[A-Za-z0-9_]+_pkey|%I))`,
+      "g",
+    );
+    return retargeted.replace(sourceSchemaPrefix, `${targetSchemaIdent}.`);
+  }, String(sqlContent || ""))
     .replace(new RegExp(`(\\bsystem_code\\s*=\\s*)'${safeSource}'`, "gi"), `$1'${safeTarget}'`)
     .replace(new RegExp(`(\\bSET\\s+system_code\\s*=\\s*)'${safeSource}'`, "gi"), `$1'${safeTarget}'`)
     .replace(new RegExp(`(\\bSELECT\\s*)'${safeSource}'(\\s*,)`, "gi"), `$1'${safeTarget}'$2`);

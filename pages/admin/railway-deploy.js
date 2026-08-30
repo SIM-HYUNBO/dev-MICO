@@ -63,7 +63,7 @@ const appEnvTemplate = [
   ["DATABASE_URL", "${{Postgres.DATABASE_URL}}"],
   ["DB_CAPACITY_BYTES", ""],
   ["DB_POOL_MAX", "10"],
-  ["DB_SCHEMA", "brunner"],
+  ["DB_SCHEMA", ""],
   ["DB_SCHEMA_OWNED", "true"],
   ["HOST", "0.0.0.0"],
   ["KAKAO_CLIENT_SECRET", ""],
@@ -150,6 +150,7 @@ const derivedNames = (projectName) => {
   return {
     postgresName: base ? `${base}_DB` : "",
     serviceName: base ? `${base}_AP` : "",
+    redisName: base ? `${base}_REDIS` : "",
     schemaName: normalizeSchemaInput(base),
   };
 };
@@ -579,7 +580,7 @@ export default function RailwayDeployWizard() {
     serviceDomain: "",
     redisEnabled: true,
     redisServiceId: "",
-    redisName: "brunner-redis",
+    redisName: derivedNames(DEFAULT_PROJECT_NAME).redisName,
     redisUrl: "${{Redis.REDIS_URL}}",
     packageName: "brunner-template",
     healthUrl: "",
@@ -647,7 +648,7 @@ export default function RailwayDeployWizard() {
 
   // 사용자가 직접 고친 이름 칸. 프로젝트명이 바뀌어도 이 칸은 덮지 않는다.
   const manualNamesRef = useRef(new Set());
-  const derivedNameKeys = ["postgresName", "serviceName", "schemaName"];
+  const derivedNameKeys = ["postgresName", "serviceName", "redisName", "schemaName"];
 
   const updateProjectName = (value) => {
     setForm((prev) => {
