@@ -652,12 +652,13 @@ export default function RailwayDeployWizard() {
   const manualNamesRef = useRef(new Set());
   const derivedNameKeys = ["postgresName", "serviceName", "redisName", "schemaName"];
 
-  const updateProjectName = (value) => {
+  const updateProjectName = (value, options = {}) => {
+    const forceDerived = Boolean(options.forceDerived);
     setForm((prev) => {
       const next = { ...prev, projectName: value };
       const derived = derivedNames(value);
       for (const key of derivedNameKeys) {
-        if (!manualNamesRef.current.has(key)) next[key] = derived[key];
+        if (forceDerived || !manualNamesRef.current.has(key)) next[key] = derived[key];
       }
       return next;
     });
@@ -1875,7 +1876,7 @@ export default function RailwayDeployWizard() {
                           // 고른 프로젝트의 이름을 같이 채운다. 그러지 않으면 신규 생성용
                           // 초기값이 남아, 설치된 사이트에 엉뚱한 이름이 뜬다.
                           const picked = projects.find((project) => project.id === projectId);
-                          if (picked?.name) updateProjectName(picked.name);
+                          if (picked?.name) updateProjectName(picked.name, { forceDerived: true });
                         }}
                       >
                         <option value="">{t("selectProject")}</option>
@@ -1886,7 +1887,12 @@ export default function RailwayDeployWizard() {
                   <Field label={t("projectId")}>
                     <Input
                       value={form.projectId}
-                      onChange={(event) => update("projectId", event.target.value)}
+                      onChange={(event) => {
+                        const projectId = event.target.value;
+                        update("projectId", projectId);
+                        const picked = projects.find((project) => project.id === projectId);
+                        if (picked?.name) updateProjectName(picked.name, { forceDerived: true });
+                      }}
                       placeholder={form.projectMode === "new" ? t("projectIdAuto") : t("projectIdExisting")}
                       inputClassName={form.projectMode === "existing" ? requiredBox(form.projectId) : ""}
                     />
