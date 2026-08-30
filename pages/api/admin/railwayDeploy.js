@@ -281,6 +281,55 @@ async function deleteService(token, serviceId, authMode = "account") {
   return railwayRequest(token, query, { id: serviceId }, authMode);
 }
 
+async function listProjectVolumes(token, projectId, authMode = "account") {
+  const query = `
+    query BrunnerProjectVolumes($projectId: String!) {
+      project(id: $projectId) {
+        volumes {
+          edges {
+            node {
+              id
+              name
+              createdAt
+            }
+          }
+        }
+      }
+    }
+  `;
+  const data = await railwayRequest(token, query, { projectId }, authMode);
+  return data.project?.volumes?.edges?.map((edge) => edge.node).filter(Boolean) || [];
+}
+
+async function deleteVolume(token, volumeId, authMode = "account") {
+  const query = `
+    mutation BrunnerVolumeDelete($volumeId: String!) {
+      volumeDelete(volumeId: $volumeId)
+    }
+  `;
+  return railwayRequest(token, query, { volumeId }, authMode);
+}
+
+async function deleteServiceVolumes(token, projectId, serviceId, environmentId, serviceName, authMode = "account") {
+  const variables = environmentId
+    ? await getVariables(token, projectId, environmentId, serviceId, authMode).catch(() => ({}))
+    : {};
+  const storedIds = [
+    variables.BRUNNER_VOLUME_ID,
+    variables.RAILWAY_VOLUME_ID,
+  ].filter(Boolean);
+  const volumes = await listProjectVolumes(token, projectId, authMode);
+  const namedIds = volumes
+    .filter((volume) => String(volume.name || "").trim() === String(serviceName || "").trim())
+    .map((volume) => volume.id)
+    .filter(Boolean);
+  const volumeIds = [...storedIds, ...namedIds].filter((id, index, all) => all.indexOf(id) === index);
+  for (const volumeId of volumeIds) {
+    await deleteVolume(token, volumeId, authMode);
+  }
+  return { deleted: volumeIds.length, volumeIds };
+}
+
 async function getServiceById(token, serviceId, authMode = "account") {
   const query = `
     query BrunnerRailwayService($id: String!) {
@@ -387,6 +436,13 @@ async function setServiceReplicas(token, serviceId, environmentId, numReplicas, 
 // 아무도 만들지 않아 4단계가 빈 URL 로 막힌다. 프록시 주소로 직접 조립해 넣는다.
 const stripTrailingDot = (value) => String(value || "").replace(/\.$/, "");
 
+const requireSslMode = (connectionString) => {
+  const value = String(connectionString || "");
+  if (!value) return "";
+  const separator = value.includes("?") ? "&" : "?";
+  return /(?:[?&])sslmode=/i.test(value) ? value : `${value}${separator}sslmode=require`;
+};
+
 async function attachDatabaseUrls(token, projectId, environmentId, serviceId, password, authMode) {
   if (!environmentId) return { databaseUrl: "", databasePublicUrl: "" };
   const variables = await getVariables(token, projectId, environmentId, serviceId, authMode).catch(() => ({}));
@@ -400,10 +456,10 @@ async function attachDatabaseUrls(token, projectId, environmentId, serviceId, pa
   const database = variables.PGDATABASE || "railway";
 
   const databaseUrl = privateDomain
-    ? `postgresql://${user}:${secret}@${privateDomain}:5432/${database}`
+    ? requireSslMode(`postgresql://${user}:${secret}@${privateDomain}:5432/${database}`)
     : "";
   const databasePublicUrl = proxyDomain && proxyPort
-    ? `postgresql://${user}:${secret}@${proxyDomain}:${proxyPort}/${database}`
+    ? requireSslMode(`postgresql://${user}:${secret}@${proxyDomain}:${proxyPort}/${database}`)
     : "";
 
   // 서비스에는 Railway 공식 템플릿과 같은 참조 형태로 넣는다. 리터럴로 박으면
@@ -411,10 +467,10 @@ async function attachDatabaseUrls(token, projectId, environmentId, serviceId, pa
   // 쓸 수 있어야 하므로 위에서 조립한 실제 값을 따로 돌려준다.
   const toWrite = {};
   if (privateDomain) {
-    toWrite.DATABASE_URL = "postgresql://${{PGUSER}}:${{POSTGRES_PASSWORD}}@${{RAILWAY_PRIVATE_DOMAIN}}:5432/${{PGDATABASE}}";
+    toWrite.DATABASE_URL = "postgresql://${{PGUSER}}:${{POSTGRES_PASSWORD}}@${{RAILWAY_PRIVATE_DOMAIN}}:5432/${{PGDATABASE}}?sslmode=require";
   }
   if (proxyDomain && proxyPort) {
-    toWrite.DATABASE_PUBLIC_URL = "postgresql://${{PGUSER}}:${{POSTGRES_PASSWORD}}@${{RAILWAY_TCP_PROXY_DOMAIN}}:${{RAILWAY_TCP_PROXY_PORT}}/${{PGDATABASE}}";
+    toWrite.DATABASE_PUBLIC_URL = "postgresql://${{PGUSER}}:${{POSTGRES_PASSWORD}}@${{RAILWAY_TCP_PROXY_DOMAIN}}:${{RAILWAY_TCP_PROXY_PORT}}/${{PGDATABASE}}?sslmode=require";
     toWrite.PGHOST = "${{RAILWAY_TCP_PROXY_DOMAIN}}";
     toWrite.PGPORT = "${{RAILWAY_TCP_PROXY_PORT}}";
   }
@@ -428,6 +484,7 @@ async function createPostgresService(token, projectId, environmentId, name, auth
   const serviceName = name || "brunner-postgres";
   const existing = await findServiceByName(token, projectId, serviceName, authMode);
   if (existing) {
+    await deleteServiceVolumes(token, projectId, existing.id, environmentId, serviceName, authMode);
     await deleteService(token, existing.id, authMode);
     const deleted = await waitForServiceDeletion(token, projectId, serviceName, authMode, existing.id);
     if (!deleted) {
@@ -465,6 +522,10 @@ async function createPostgresService(token, projectId, environmentId, name, auth
     throw new Error("Railway did not return a service id for the PostgreSQL service.");
   }
   const volume = await createVolume(token, projectId, environmentId, service.id, POSTGRES_MOUNT_PATH, authMode);
+  const volumeId = volume?.volumeCreate?.id || "";
+  if (volumeId) {
+    await upsertVariables(token, projectId, environmentId, service.id, { BRUNNER_VOLUME_ID: volumeId }, authMode).catch(() => null);
+  }
   const urls = await attachDatabaseUrls(token, projectId, environmentId, service.id, password, authMode);
   // 서비스를 만들기만 하면 컨테이너는 뜨지 않는다. plugin 시절에는 Railway 가
   // 알아서 띄워 줬기 때문에 배포 호출이 없었고, 그대로 두면 프록시만 살아 있고
@@ -890,10 +951,30 @@ async function deployService(token, serviceId, environmentId, authMode = "accoun
 
 function getSslConfig(connectionString) {
   const url = String(connectionString || "");
-  if (url.includes("railway.internal") || url.includes("proxy.rlwy.net") || url.includes("railway.app")) {
+  const mode = (process.env.SSL_MODE || "").trim().toLowerCase();
+  if (mode === "disable" || mode === "false" || mode === "0") return false;
+  if (/sslmode=require/i.test(url) || mode === "require" || mode === "true" || url.includes("railway.internal") || url.includes("proxy.rlwy.net") || url.includes("railway.app")) {
     return { rejectUnauthorized: false };
   }
   return false;
+}
+
+function stripPgSslParams(connectionString) {
+  const value = String(connectionString || "");
+  try {
+    const parsed = new URL(value);
+    parsed.searchParams.delete("sslmode");
+    return parsed.toString();
+  } catch {
+    return value.replace(/([?&])sslmode=[^&]*&?/i, "$1").replace(/[?&]$/, "");
+  }
+}
+
+function pgConnectionConfig(connectionString) {
+  return {
+    connectionString: stripPgSslParams(connectionString),
+    ssl: getSslConfig(connectionString),
+  };
 }
 
 // 스키마 이름은 소문자로 접어서 만든다.
@@ -1154,12 +1235,12 @@ async function verifyAppliedSchema(client, schemaName) {
   return row;
 }
 
-const TRANSIENT_DB_ERROR = /ECONNRESET|ECONNREFUSED|ETIMEDOUT|Connection terminated|timeout expired|starting up|recovery mode/i;
+const TRANSIENT_DB_ERROR = /ECONNRESET|ECONNREFUSED|ETIMEDOUT|Connection terminated|timeout expired|starting up|recovery mode|SSL connection/i;
 
 async function testDatabase(connectionString) {
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const client = new Client({ connectionString, ssl: getSslConfig(connectionString) });
+    const client = new Client(pgConnectionConfig(connectionString));
     try {
       await client.connect();
       return { connected: true, checkedAt: new Date().toISOString(), attempts: attempt };
@@ -1208,7 +1289,7 @@ async function applySchema(connectionString, schemaNameInput, systemCodeInput, b
   const systemCode = normalizeSystemCode(systemCodeInput);
   const brandName = String(brandNameInput || "").trim().slice(0, 60);
   const files = await readInstallSqlFileList();
-  const client = new Client({ connectionString, ssl: getSslConfig(connectionString) });
+  const client = new Client(pgConnectionConfig(connectionString));
   await client.connect();
   try {
     // 스크립트들은 스키마가 이미 있다고 보고 테이블부터 만든다.

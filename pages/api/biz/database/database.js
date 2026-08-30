@@ -7,24 +7,34 @@ import * as commonFunctions from "@/lib/commonFunctions";
 
 let pool = null;
 
+const stripPgSslParams = (connectionString) => {
+  const value = String(connectionString || "");
+  try {
+    const parsed = new URL(value);
+    parsed.searchParams.delete("sslmode");
+    return parsed.toString();
+  } catch {
+    return value.replace(/([?&])sslmode=[^&]*&?/i, "$1").replace(/[?&]$/, "");
+  }
+};
+
+const getSslConfig = (connectionString) => {
+  const mode = (process.env.SSL_MODE || "").trim().toLowerCase();
+  if (mode === "disable" || mode === "false" || mode === "0") return false;
+  if (/sslmode=require/i.test(connectionString || "") || mode === "require" || mode === "true") return { rejectUnauthorized: false };
+  return false;
+};
+
 const getPool = async () => {
   if (!pool) {
     const connectionString = process.env.DATABASE_URL;
 
     pool = new Pool({
-      connectionString,
+      connectionString: stripPgSslParams(connectionString),
       max: parseInt(process.env.DB_POOL_MAX || "10", 10),
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
-      ssl: (() => {
-        if (!process.env.SSL_MODE) return false;
-        try {
-          const parsed = JSON.parse(process.env.SSL_MODE);
-          return typeof parsed === "object" ? parsed : parsed === true;
-        } catch {
-          return process.env.SSL_MODE === "true";
-        }
-      })(),
+      ssl: getSslConfig(connectionString),
     });
   }
   return pool;

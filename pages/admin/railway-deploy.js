@@ -258,6 +258,13 @@ const toEnvObject = (rows) =>
 
 const fromTemplate = (template) => template.map(([key, value]) => ({ key, value }));
 
+const requireSslMode = (url) => {
+  const value = String(url || "");
+  if (!value) return "";
+  const separator = value.includes("?") ? "&" : "?";
+  return /(?:[?&])sslmode=/i.test(value) ? value : `${value}${separator}sslmode=require`;
+};
+
 const toJdbcDatabaseUrl = (url) => {
   if (!url) return "";
   try {
@@ -378,7 +385,7 @@ function StepState({ state, t }) {
 
 // 2단계부터는 1단계에서 받은 값을 다시 묻지 않는다. 무엇이 쓰이고 있는지만
 // 읽기 전용으로 보여주고, 고칠 일이 있으면 1단계로 돌려보낸다.
-function CredentialsSummary({ form, t, onEdit }) {
+function CredentialsSummary({ form, t, onEdit, disabled }) {
   const items = [
     { key: "accountToken", label: t("railwayAccountToken"), value: maskSecret(form.accountToken) },
     { key: "projectToken", label: `${t("railwayProjectToken")} (${t("optional")})`, value: maskSecret(form.projectToken) },
@@ -389,7 +396,7 @@ function CredentialsSummary({ form, t, onEdit }) {
     <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-alt)] p-3">
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-extrabold text-[var(--text-muted)]">{t("stepAccount")}</span>
-        <Button size="sm" variant="ghost" onClick={onEdit}>{t("goToStep1")}</Button>
+        <Button size="sm" variant="ghost" onClick={onEdit} disabled={disabled}>{t("goToStep1")}</Button>
       </div>
       <div className="mt-2 grid gap-1 md:grid-cols-2">
         {items.map((item) => (
@@ -594,7 +601,7 @@ export default function RailwayDeployWizard() {
 
   const appEnvVars = useMemo(() => {
     const vars = toEnvObject(appEnvRows);
-    if (form.databaseUrl) vars.DATABASE_URL = form.databaseUrl;
+    if (form.databaseUrl) vars.DATABASE_URL = requireSslMode(form.databaseUrl);
     if (form.schemaName) vars.DB_SCHEMA = form.schemaName;
     if (form.systemCode) {
       vars.SYSTEM_CODE = form.systemCode;
@@ -702,7 +709,7 @@ export default function RailwayDeployWizard() {
 
   const updateDbEnvRows = (rows) => {
     setDbEnvRows(rows);
-    const databaseUrl = rows.find((row) => row.key === "DATABASE_PUBLIC_URL")?.value || "";
+    const databaseUrl = requireSslMode(rows.find((row) => row.key === "DATABASE_PUBLIC_URL")?.value || "");
     if (databaseUrl !== form.databaseUrl) update("databaseUrl", databaseUrl);
   };
 
@@ -1002,7 +1009,7 @@ export default function RailwayDeployWizard() {
       Object.prototype.hasOwnProperty.call(variables, row.key) ? { ...row, value: variables[row.key] || "" } : row
     ));
     setDbEnvRows(nextRows);
-    update("databaseUrl", variables.DATABASE_PUBLIC_URL || "");
+    update("databaseUrl", requireSslMode(variables.DATABASE_PUBLIC_URL || ""));
     return nextRows;
   };
 
@@ -1128,6 +1135,7 @@ export default function RailwayDeployWizard() {
 
   // 다음 으로 그냥 넘어가더라도 빠진 것은 알려준다.
   const goToStep = (nextIndex) => {
+    if (wizardLocked) return;
     const currentStep = steps[active].id;
     const { blockers, warnings } = stepIssues(currentStep);
     const movingForward = nextIndex > active;
@@ -1157,7 +1165,7 @@ export default function RailwayDeployWizard() {
   };
 
   const runCurrentStep = async () => {
-    if (stepBusy) return;
+    if (wizardLocked) return;
     const stepId = steps[active].id;
     setStepBusy(true);
     try {
@@ -1184,6 +1192,7 @@ export default function RailwayDeployWizard() {
     (Boolean(deployment?.id) &&
       !["SUCCESS", "FAILED", "CRASHED", "UNKNOWN"].includes(deployment?.status || "") &&
       stepState.deploy === "running");
+  const wizardLocked = stepBusy || Boolean(running) || buildInProgress;
 
   const advanceFromProject = () => {
     if (!String(form.projectToken || "").trim()) {
@@ -1275,10 +1284,10 @@ export default function RailwayDeployWizard() {
       if (!postgresServiceId) return;
       update("postgresServiceId", postgresServiceId);
       if (data?.databasePublicUrl) {
-        update("databaseUrl", data.databasePublicUrl);
+        update("databaseUrl", requireSslMode(data.databasePublicUrl));
         setDbEnvRows((rows) => upsertEnvRows(rows, {
-          DATABASE_PUBLIC_URL: data.databasePublicUrl,
-          DATABASE_URL: data.databaseUrl || "",
+          DATABASE_PUBLIC_URL: requireSslMode(data.databasePublicUrl),
+          DATABASE_URL: requireSslMode(data.databaseUrl || ""),
           PGHOST: data.proxyDomain || "",
           PGPORT: String(data.proxyPort || 5432),
         }));
@@ -1311,7 +1320,7 @@ export default function RailwayDeployWizard() {
         if (!ok) return;
       }
       await loadProjectServices(form.projectId);
-      const databaseUrl = data?.databasePublicUrl || form.databaseUrl;
+      const databaseUrl = requireSslMode(data?.databasePublicUrl || form.databaseUrl);
       if (databaseUrl) {
         setStepState((prev) => ({ ...prev, database: "running" }));
         const ready = await waitForDatabase(databaseUrl, "database");
@@ -1691,7 +1700,7 @@ export default function RailwayDeployWizard() {
                 {running}
               </span>
             ) : null}
-            <Button onClick={runCurrentStep} disabled={stepBusy || Boolean(running) || buildInProgress}>{buildInProgress ? t("buildingWait") : stepBusy || running ? t("running") : t("runCurrentStep")}</Button>
+            <Button onClick={runCurrentStep} disabled={wizardLocked}>{buildInProgress ? t("buildingWait") : stepBusy || running ? t("running") : t("runCurrentStep")}</Button>
           </div>
         </div>
 
@@ -1707,8 +1716,9 @@ export default function RailwayDeployWizard() {
                     key={step.id}
                     type="button"
                     onClick={() => goToStep(index)}
+                    disabled={wizardLocked}
                     className={`flex min-h-14 w-full items-center justify-between rounded-[var(--radius-md)] px-3 text-left transition ${
-                      selected ? "bg-[var(--surface-alt)]" : "hover:bg-[var(--surface-alt)]"
+                      selected ? "bg-[var(--surface-alt)]" : wizardLocked ? "opacity-70" : "hover:bg-[var(--surface-alt)]"
                     }`}
                   >
                     <span className="flex items-center gap-3">
@@ -1728,13 +1738,21 @@ export default function RailwayDeployWizard() {
           </Card>
 
           <div className="grid gap-4">
-            <Card className="p-5">
+            <Card className="relative p-5">
+              {wizardLocked ? (
+                <div className="absolute inset-0 z-20 flex items-center justify-center rounded-[var(--radius-lg)] bg-[var(--surface)]/80 backdrop-blur-sm" aria-busy="true">
+                  <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm font-extrabold text-[var(--brand-blue)] shadow-sm">
+                    <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-[var(--brand-blue)] border-t-transparent" />
+                    {buildInProgress ? t("buildingWait") : t("running")}
+                  </div>
+                </div>
+              ) : null}
               <div className="mb-4 flex items-center justify-between gap-3 border-b border-[var(--border)] pb-3">
                 <h2 className="text-lg font-extrabold">{`${t("step")} ${active + 1}. ${t(steps[active].labelKey)}`}</h2>
                 <StepState state={stepState[steps[active].id]} t={t} />
               </div>
 
-              {active > 0 ? <CredentialsSummary form={form} t={t} onEdit={() => setActive(0)} /> : null}
+              {active > 0 ? <CredentialsSummary form={form} t={t} onEdit={() => setActive(0)} disabled={wizardLocked} /> : null}
 
               {active === 0 && (
                 <div className="grid gap-4">
@@ -2025,7 +2043,7 @@ export default function RailwayDeployWizard() {
                     <Field label={t("gitRepository")} hint={t("enteredInStep1")}>
                       <div className="flex gap-2">
                         <Input icon={<GitBranch size={16} />} value={form.githubRepo} readOnly inputClassName={`cursor-text font-mono text-xs opacity-90 ${requiredBox(form.githubRepo)}`} placeholder={t("notEnteredYet")} />
-                        <Button size="sm" variant="ghost" onClick={() => setActive(0)}>{t("goToStep1")}</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setActive(0)} disabled={wizardLocked}>{t("goToStep1")}</Button>
                       </div>
                     </Field>
                     <Field label={t("branch")}><Input value={form.githubBranch} onChange={(event) => update("githubBranch", event.target.value)} inputClassName={requiredBox(form.githubBranch)} /></Field>
@@ -2033,7 +2051,7 @@ export default function RailwayDeployWizard() {
                       <div className="grid gap-2">
                         <div className="flex gap-2">
                           <Input value={maskSecret(form.githubToken)} readOnly inputClassName={`cursor-text font-mono text-xs opacity-90 ${requiredBox(form.githubToken)}`} placeholder={t("notEnteredYet")} />
-                          <Button size="sm" variant="ghost" onClick={() => setActive(0)}>{t("goToStep1")}</Button>
+                          <Button size="sm" variant="ghost" onClick={() => setActive(0)} disabled={wizardLocked}>{t("goToStep1")}</Button>
                         </div>
                         <a
                           href="https://github.com/apps/railway-app/installations/new"
@@ -2190,10 +2208,10 @@ export default function RailwayDeployWizard() {
               )}
 
               <div className="mt-5 flex flex-wrap justify-between gap-2 border-t border-[var(--border)] pt-4">
-                <Button variant="ghost" disabled={active === 0} onClick={() => setActive((value) => Math.max(0, value - 1))}>{t("prev")}</Button>
+                <Button variant="ghost" disabled={active === 0 || wizardLocked} onClick={() => setActive((value) => Math.max(0, value - 1))}>{t("prev")}</Button>
                 <div className="flex gap-2">
-                  <Button variant="ghost" disabled={active === steps.length - 1 || buildInProgress} onClick={() => goToStep(Math.min(steps.length - 1, active + 1))}>{t("next")}</Button>
-                  <Button onClick={runCurrentStep} disabled={stepBusy || Boolean(running) || buildInProgress}>{buildInProgress ? t("buildingWait") : stepBusy || running ? t("running") : t("run")}</Button>
+                  <Button variant="ghost" disabled={active === steps.length - 1 || wizardLocked} onClick={() => goToStep(Math.min(steps.length - 1, active + 1))}>{t("next")}</Button>
+                  <Button onClick={runCurrentStep} disabled={wizardLocked}>{buildInProgress ? t("buildingWait") : stepBusy || running ? t("running") : t("run")}</Button>
                 </div>
               </div>
             </Card>
