@@ -268,6 +268,24 @@ async function findServiceByName(token, projectId, name, authMode = "account") {
   return services.find((service) => service.name === name) || null;
 }
 
+async function deleteService(token, serviceId, authMode = "account") {
+  const query = `
+    mutation BrunnerServiceDelete($id: String!) {
+      serviceDelete(id: $id)
+    }
+  `;
+  return railwayRequest(token, query, { id: serviceId }, authMode);
+}
+
+async function waitForServiceDeletion(token, projectId, name, authMode = "account") {
+  for (let attempt = 1; attempt <= 12; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    const existing = await findServiceByName(token, projectId, name, authMode);
+    if (!existing) return true;
+  }
+  return false;
+}
+
 // Railway 는 plugin 을 걷어내고 데이터베이스도 일반 서비스로 만든다. 예전
 // pluginCreate 는 지금 Not Authorized 로 거절되므로 이미지 기반 serviceCreate 로
 // 만들고 볼륨을 붙인다. 볼륨이 없으면 배포 자체가 거부된다.
@@ -385,10 +403,11 @@ async function createPostgresService(token, projectId, environmentId, name, auth
   const serviceName = name || "brunner-postgres";
   const existing = await findServiceByName(token, projectId, serviceName, authMode);
   if (existing) {
-    const urls = await attachDatabaseUrls(token, projectId, environmentId, existing.id, options.password, authMode);
-    // 앞선 실행에서 서비스만 만들어지고 배포가 안 된 경우가 있어 다시 띄운다.
-    const deployed = await deployServiceOrThrow(token, existing.id, environmentId, authMode, serviceName);
-    return { pluginCreate: existing, reused: true, deployed, ...urls };
+    await deleteService(token, existing.id, authMode);
+    const deleted = await waitForServiceDeletion(token, projectId, serviceName, authMode);
+    if (!deleted) {
+      throw new Error(`Existing PostgreSQL service "${serviceName}" was deleted but still appears in Railway. Retry after Railway finishes deletion.`);
+    }
   }
 
   const password = options.password || generatePassword();
@@ -426,7 +445,7 @@ async function createPostgresService(token, projectId, environmentId, name, auth
   // 알아서 띄워 줬기 때문에 배포 호출이 없었고, 그대로 두면 프록시만 살아 있고
   // 뒤에 아무것도 없어 접속이 ECONNRESET 으로 끊긴다.
   const deployed = await deployServiceOrThrow(token, service.id, environmentId, authMode, serviceName);
-  return { pluginCreate: service, volume, generatedPassword: password, deployed, ...urls };
+  return { pluginCreate: service, volume, generatedPassword: password, replacedExisting: Boolean(existing), deployed, ...urls };
 }
 
 // 읽기 복제본은 인스턴스 수를 늘려서 만들 수 없다 — 같은 볼륨을 여러 인스턴스가
