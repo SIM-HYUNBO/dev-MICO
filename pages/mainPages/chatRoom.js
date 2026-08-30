@@ -1,6 +1,7 @@
 import { useRouter } from "next/router";
 import Layout from "@/components/core/client/frames/layout";
 import ChatRoomContent from "@/components/core/client/contents/chatroomContent";
+import MTabBar from "@/components/core/client/frames/mTabBar";
 
 export default function ChatRoom() {
   const router = useRouter();
@@ -14,6 +15,7 @@ export default function ChatRoom() {
         onLeaveRoom={() => router.replace("/")}
         roomTypeFilter={roomType}
       />
+      <MTabBar />
     </>
   );
 }

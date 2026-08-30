@@ -14,6 +14,8 @@ import * as postInfo from "@/pages/api/biz/postInfo";
 import * as credit from "@/pages/api/biz/credit";
 import * as payment from "@/pages/api/biz/payment";
 import * as dbUsage from "@/pages/api/biz/dbUsage";
+import * as resourceText from "@/pages/api/biz/resourceText";
+import * as menu from "@/pages/api/biz/menu";
 import * as postCommentInfo from "@/pages/api/biz/postCommentInfo";
 import * as security from "@/pages/api/biz/security";
 import * as chatroom from "@/pages/api/biz/chatroom";
@@ -193,6 +195,8 @@ const moduleMap = {
   [constants.modulePrefix.credit]: credit.executeService,
   [constants.modulePrefix.payment]: payment.executeService,
   [constants.modulePrefix.dbUsage]: dbUsage.executeService,
+  [constants.modulePrefix.resourceText]: resourceText.executeService,
+  [constants.modulePrefix.menu]: menu.executeService,
 };
 
 const executeService = async (jRequest) => {

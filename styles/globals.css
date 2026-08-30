@@ -262,6 +262,13 @@ neutral, stone
     .tab-bar-pb { padding-bottom: 0; }
   }
 
+  @media (max-width: 767px) {
+    html.has-mobile-tab-bar .Layout main {
+      padding-bottom: calc(78px + env(safe-area-inset-bottom, 22px));
+      scroll-padding-bottom: calc(78px + env(safe-area-inset-bottom, 22px));
+    }
+  }
+
   .font-mono-data {
     font-family: var(--font-mono);
   }
