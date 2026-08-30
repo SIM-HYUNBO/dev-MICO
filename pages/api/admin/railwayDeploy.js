@@ -310,6 +310,24 @@ async function deleteVolume(token, volumeId, authMode = "account") {
   return railwayRequest(token, query, { volumeId }, authMode);
 }
 
+async function waitForVolumeDeletion(token, projectId, volumeIds, authMode = "account") {
+  const ids = (volumeIds || []).filter(Boolean);
+  if (ids.length === 0) return true;
+  let lastError = "";
+  for (let attempt = 1; attempt <= 60; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+    try {
+      const volumes = await listProjectVolumes(token, projectId, authMode);
+      const remaining = volumes.some((volume) => ids.includes(volume.id));
+      if (!remaining) return true;
+    } catch (error) {
+      lastError = error.message;
+    }
+  }
+  if (lastError) throw new Error(`Could not confirm volume deletion: ${lastError}`);
+  return false;
+}
+
 async function deleteServiceVolumes(token, projectId, serviceId, environmentId, serviceName, authMode = "account") {
   const variables = environmentId
     ? await getVariables(token, projectId, environmentId, serviceId, authMode).catch(() => ({}))
@@ -330,16 +348,6 @@ async function deleteServiceVolumes(token, projectId, serviceId, environmentId, 
   return { deleted: volumeIds.length, volumeIds };
 }
 
-async function getServiceById(token, serviceId, authMode = "account") {
-  const query = `
-    query BrunnerRailwayService($id: String!) {
-      service(id: $id) { id name }
-    }
-  `;
-  const data = await railwayRequest(token, query, { id: serviceId }, authMode);
-  return data.service || null;
-}
-
 async function waitForServiceDeletion(token, projectId, name, authMode = "account", serviceId = "") {
   let lastError = "";
   for (let attempt = 1; attempt <= 60; attempt += 1) {
@@ -347,17 +355,36 @@ async function waitForServiceDeletion(token, projectId, name, authMode = "accoun
     try {
       const services = await listProjectServicesStrict(token, projectId, authMode);
       const stillListed = services.some((service) => service.id === serviceId || service.name === name);
-      const stillReadable = serviceId ? await getServiceById(token, serviceId, authMode).then(Boolean).catch((error) => {
-        lastError = error.message;
-        return false;
-      }) : false;
-      if (!stillListed && !stillReadable) return true;
+      if (!stillListed) return true;
     } catch (error) {
       lastError = error.message;
     }
   }
   if (lastError) throw new Error(`Could not confirm deletion of "${name}": ${lastError}`);
   return false;
+}
+
+async function deleteExistingServiceForRecreate(token, projectId, environmentId, serviceName, authMode = "account", options = {}) {
+  const existing = await findServiceByName(token, projectId, serviceName, authMode);
+  if (!existing) return { replacedExisting: false };
+
+  let volumes = { deleted: 0, volumeIds: [] };
+  if (options.deleteVolumes) {
+    volumes = await deleteServiceVolumes(token, projectId, existing.id, environmentId, serviceName, authMode);
+  }
+
+  await deleteService(token, existing.id, authMode);
+  const serviceDeleted = await waitForServiceDeletion(token, projectId, serviceName, authMode, existing.id);
+  if (!serviceDeleted) {
+    throw new Error(`Existing service "${serviceName}" was deleted but still appears in Railway. Retry after Railway finishes deletion.`);
+  }
+  if (options.deleteVolumes) {
+    const volumesDeleted = await waitForVolumeDeletion(token, projectId, volumes.volumeIds, authMode);
+    if (!volumesDeleted) {
+      throw new Error(`Existing volumes for "${serviceName}" were deleted but still appear in Railway. Retry after Railway finishes deletion.`);
+    }
+  }
+  return { replacedExisting: true, deletedServiceId: existing.id, deletedVolumes: volumes };
 }
 
 // Railway 는 plugin 을 걷어내고 데이터베이스도 일반 서비스로 만든다. 예전
@@ -482,15 +509,9 @@ async function attachDatabaseUrls(token, projectId, environmentId, serviceId, pa
 
 async function createPostgresService(token, projectId, environmentId, name, authMode = "account", options = {}) {
   const serviceName = name || "brunner-postgres";
-  const existing = await findServiceByName(token, projectId, serviceName, authMode);
-  if (existing) {
-    await deleteServiceVolumes(token, projectId, existing.id, environmentId, serviceName, authMode);
-    await deleteService(token, existing.id, authMode);
-    const deleted = await waitForServiceDeletion(token, projectId, serviceName, authMode, existing.id);
-    if (!deleted) {
-      throw new Error(`Existing PostgreSQL service "${serviceName}" was deleted but still appears in Railway. Retry after Railway finishes deletion.`);
-    }
-  }
+  const replacement = await deleteExistingServiceForRecreate(token, projectId, environmentId, serviceName, authMode, {
+    deleteVolumes: true,
+  });
 
   const password = options.password || generatePassword();
   // 복제본을 쓸 때만 복제 전용 이미지로 간다. 그리고 그 경우 REPMGR_USER_PWD 가
@@ -531,7 +552,7 @@ async function createPostgresService(token, projectId, environmentId, name, auth
   // 알아서 띄워 줬기 때문에 배포 호출이 없었고, 그대로 두면 프록시만 살아 있고
   // 뒤에 아무것도 없어 접속이 ECONNRESET 으로 끊긴다.
   const deployed = await deployServiceOrThrow(token, service.id, environmentId, authMode, serviceName);
-  return { pluginCreate: service, volume, generatedPassword: password, replacedExisting: Boolean(existing), deployed, ...urls };
+  return { pluginCreate: service, volume, generatedPassword: password, ...replacement, deployed, ...urls };
 }
 
 // 읽기 복제본은 인스턴스 수를 늘려서 만들 수 없다 — 같은 볼륨을 여러 인스턴스가
@@ -644,10 +665,8 @@ async function createRedisService(token, projectId, environmentId, name, authMod
 }
 
 async function createNextService(token, projectId, environmentId, service, authMode = "account") {
-  const existing = await findServiceByName(token, projectId, service.name, authMode);
-  if (existing) {
-    return { serviceCreate: existing, reused: true, sourceAttached: true, attempts: [] };
-  }
+  const serviceName = service.name || "brunner-next";
+  const replacement = await deleteExistingServiceForRecreate(token, projectId, environmentId, serviceName, authMode);
 
   const query = `
     mutation BrunnerServiceCreate($input: ServiceCreateInput!) {
@@ -676,7 +695,7 @@ async function createNextService(token, projectId, environmentId, service, authM
       input: {
         projectId,
         environmentId: environmentId || undefined,
-        name: service.name,
+        name: serviceName,
       },
     },
     {
@@ -684,7 +703,7 @@ async function createNextService(token, projectId, environmentId, service, authM
       attachesSource: false,
       input: {
         projectId,
-        name: service.name,
+        name: serviceName,
       },
     },
     {
@@ -693,7 +712,7 @@ async function createNextService(token, projectId, environmentId, service, authM
       input: {
         projectId,
         environmentId: environmentId || undefined,
-        name: service.name,
+        name: serviceName,
         source: { repo: service.githubRepo, branch: service.githubBranch },
       },
     },
@@ -703,7 +722,7 @@ async function createNextService(token, projectId, environmentId, service, authM
       input: {
         projectId,
         environmentId: environmentId || undefined,
-        name: service.name,
+        name: serviceName,
         source: { repo: service.githubRepo },
       },
     },
@@ -712,7 +731,7 @@ async function createNextService(token, projectId, environmentId, service, authM
       attachesSource: true,
       input: {
         projectId,
-        name: service.name,
+        name: serviceName,
         source: { repo: service.githubRepo },
       },
     },
@@ -727,7 +746,7 @@ async function createNextService(token, projectId, environmentId, service, authM
       if (created?.id && candidate.attachesSource && candidate.shape !== "full" && service.githubBranch && environmentId) {
         await setServiceBranch(token, created.id, environmentId, service.githubBranch, authMode).catch(() => null);
       }
-      return { serviceCreate: created, shape: candidate.shape, sourceAttached: candidate.attachesSource, attempts };
+      return { serviceCreate: created, shape: candidate.shape, sourceAttached: candidate.attachesSource, attempts, ...replacement };
     } catch (error) {
       attempts.push({ shape: candidate.shape, error: error.message });
     }
@@ -935,8 +954,14 @@ async function ensureTcpProxy(token, environmentId, serviceId, applicationPort =
 // serviceInstanceDeploy(input:) 는 현재 스키마에 없다. Railway 가 알려준 대로
 // serviceInstanceDeployV2 는 인자를 직접 받는다. 예전 형태로 부르던 동안 DB 배포
 // 호출도 조용히 실패하고 있었다(호출부가 예외를 삼켰다).
-async function deployService(token, serviceId, environmentId, authMode = "account") {
+async function deployService(token, serviceId, environmentId, authMode = "account", projectId = "") {
   if (!environmentId) return { skipped: "environmentId is required to deploy." };
+  if (projectId) {
+    const active = await findActiveDeployment(token, projectId, serviceId, environmentId, authMode);
+    if (active?.id) {
+      return { serviceInstanceDeployV2: active.id, reusedActiveDeployment: true, status: active.status };
+    }
+  }
   const query = `
     mutation BrunnerServiceDeploy($serviceId: String!, $environmentId: String!) {
       serviceInstanceDeployV2(serviceId: $serviceId, environmentId: $environmentId)
@@ -1545,8 +1570,8 @@ export default async function handler(req, res) {
         };
         break;
       case "deployService":
-        requireFields(req.body, ["serviceId"]);
-        data = await deployService(token, req.body.serviceId, req.body.environmentId, authMode);
+        requireFields(req.body, ["serviceId", "environmentId"]);
+        data = await deployService(token, req.body.serviceId, req.body.environmentId, authMode, req.body.projectId);
         break;
       case "verifyInstall":
         requireFields(req.body, ["url"]);

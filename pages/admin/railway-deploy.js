@@ -1398,7 +1398,7 @@ export default function RailwayDeployWizard() {
         // 변수를 올린 뒤에 저장소를 붙인다. 순서가 반대면 Railway 가 저장소를 붙이는
         // 순간 빌드를 거는데, 그때는 DATABASE_URL 이 없어 기동에서 죽는다. 몇 분을
         // 태우고 실패 하나를 남기며, 6단계가 그것을 붙잡으면 정상 설치가 실패로 끊긴다.
-        if (!data?.reused) {
+        if (!data?.reused && !data?.sourceAttached) {
           const attached = await callApi("attachServiceSource", {
             serviceId,
             environmentId: form.environmentId,
@@ -1406,6 +1406,8 @@ export default function RailwayDeployWizard() {
             githubBranch: form.githubBranch,
           }, "service", { silent: true });
           if (!attached) return; // 저장소가 안 붙으면 6단계에서 배포할 것이 없다.
+          setSourceAttached(true);
+        } else if (data?.sourceAttached) {
           setSourceAttached(true);
         }
         // 도메인이 있어야 8단계에서 확인할 주소가 생긴다.
@@ -1477,6 +1479,7 @@ export default function RailwayDeployWizard() {
         return;
       }
       const data = await callApi("deployService", {
+        projectId: form.projectId,
         serviceId: form.serviceId,
         environmentId: form.environmentId,
       }, "deploy", { keepRunning: true, silent: true });
