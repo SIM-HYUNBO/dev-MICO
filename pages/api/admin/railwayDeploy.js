@@ -560,7 +560,11 @@ async function createRedisService(token, projectId, environmentId, name, authMod
 async function createNextService(token, projectId, environmentId, service, authMode = "account") {
   const existing = await findServiceByName(token, projectId, service.name, authMode);
   if (existing) {
-    return { serviceCreate: existing, reused: true };
+    await deleteService(token, existing.id, authMode);
+    const deleted = await waitForServiceDeletion(token, projectId, service.name, authMode);
+    if (!deleted) {
+      throw new Error(`Existing NextJS service "${service.name}" was deleted but still appears in Railway. Retry after Railway finishes deletion.`);
+    }
   }
 
   const query = `

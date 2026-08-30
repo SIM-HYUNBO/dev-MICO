@@ -92,7 +92,7 @@
     "winston-daily-rotate-file": "^5.0.0",
     "ws": "^8.20.0",
     "xlsx": "^0.18.5",
-    "brunner-template": "file:vendor/brunner-template-1.20.31.tgz"
+    "brunner-template": "file:vendor/brunner-template-1.20.32.tgz"
   },
   "devDependencies": {
     "@babel/cli": "^7.21.5",

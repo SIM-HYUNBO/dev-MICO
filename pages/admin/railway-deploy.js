@@ -3,6 +3,7 @@ import Layout from "@/components/core/client/frames/layout";
 import * as userInfo from "@/components/core/client/frames/userInfo";
 import * as constants from "@/lib/constants";
 import * as commonFunctions from "@/lib/commonFunctions";
+import { useModal } from "@/components/core/client/brunnerMessageBox";
 import Button from "@/components/core/client/ui/Button";
 import Card from "@/components/core/client/ui/Card";
 import Chip from "@/components/core/client/ui/Chip";
@@ -506,6 +507,7 @@ const serviceText = (service) => {
 };
 
 export default function RailwayDeployWizard() {
+  const { BrunnerMessageBox, openOkCancelModal } = useModal();
   const initialLanguageCode = userInfo.getCurrentLanguageCode?.() || "en-US";
   const [languageCode, setLanguageCode] = useState(initialLanguageCode);
   const [active, setActive] = useState(0);
@@ -1200,6 +1202,12 @@ export default function RailwayDeployWizard() {
 
     if (step === "project") {
       if (form.projectMode === "new") {
+        const confirmed = await openOkCancelModal(
+          t("createProjectConfirm"),
+          constants.messageCategory.Confirm,
+        ).catch(() => false);
+        if (!confirmed) return;
+
         const data = await callApi("createProject", {
           projectName: form.projectName,
           projectDescription: form.projectDescription,
@@ -1340,29 +1348,27 @@ export default function RailwayDeployWizard() {
     }
 
     if (step === "service") {
-      let serviceId = form.serviceId;
+      let serviceId = "";
       // 서비스를 붙이기 전에 저장소를 채운다. 사용자가 버튼을 따로 누르지
       // 않아도 되고, 빌드도 한 번만 돈다.
       if (!scaffoldDone) {
         const scaffolded = await runScaffold();
         if (!scaffolded) return;
       }
-      if (!serviceId) {
-        const data = await callApi("createNextService", {
-          projectId: form.projectId,
-          environmentId: form.environmentId,
-          service: {
-            name: form.serviceName,
-            githubRepo: form.githubRepo,
-            githubBranch: form.githubBranch,
-          },
-        });
-        const service = data?.serviceCreate;
-        serviceId = service?.id || "";
-        if (!serviceId) return; // 생성에 실패했는데 다음 단계로 넘어가면 실패를 못 알아챈다.
-        update("serviceId", serviceId);
-        await loadProjectServices(form.projectId);
-      }
+      const data = await callApi("createNextService", {
+        projectId: form.projectId,
+        environmentId: form.environmentId,
+        service: {
+          name: form.serviceName,
+          githubRepo: form.githubRepo,
+          githubBranch: form.githubBranch,
+        },
+      }, "service", { silent: true });
+      const service = data?.serviceCreate;
+      serviceId = service?.id || "";
+      if (!serviceId) return; // 생성에 실패했는데 다음 단계로 넘어가면 실패를 못 알아챈다.
+      update("serviceId", serviceId);
+      await loadProjectServices(form.projectId);
       if (serviceId) {
         await callApi("upsertVariables", {
           projectId: form.projectId,
@@ -1445,20 +1451,21 @@ export default function RailwayDeployWizard() {
         // await 해야 빌드가 끝날 때까지 stepBusy 가 유지되고 실행 버튼이 잠긴다.
         // 기다리지 않으면 곧바로 버튼이 풀려, 빌드가 도는 중에 한 번 더 눌러
         // 같은 커밋으로 배포가 두 번 돈다.
-        await watchDeployment(active.deployment.id);
+        const ok = await watchDeployment(active.deployment.id);
+        if (ok) setActive(6);
         return;
       }
       const data = await callApi("deployService", {
         serviceId: form.serviceId,
         environmentId: form.environmentId,
-      }, "deploy", { keepRunning: true });
+      }, "deploy", { keepRunning: true, silent: true });
       const deploymentId = data?.serviceInstanceDeployV2;
       if (typeof deploymentId === "string") {
         setDeployment({ id: deploymentId, status: "PENDING" });
-        // 빌드가 도는 동안은 이 단계에 머문다. 바로 다음 단계로 넘기면 정작
-        // 지켜보라고 만든 상태 표시를 볼 수 없다.
+        // 빌드가 도는 동안은 이 단계에 머물고, 성공하면 Redis 단계로 넘긴다.
         // await 해야 그동안 실행 버튼이 잠긴다(위 activeDeployment 쪽과 같은 이유).
-        await watchDeployment(deploymentId);
+        const ok = await watchDeployment(deploymentId);
+        if (ok) setActive(6);
         return;
       }
       if (data) setActive(6);
@@ -2242,6 +2249,7 @@ export default function RailwayDeployWizard() {
           </div>
         </div>
       ) : null}
+      <BrunnerMessageBox />
     </div>
   );
 }
