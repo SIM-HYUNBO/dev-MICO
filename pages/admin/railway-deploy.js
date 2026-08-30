@@ -654,11 +654,22 @@ export default function RailwayDeployWizard() {
 
   const updateProjectName = (value, options = {}) => {
     const forceDerived = Boolean(options.forceDerived);
+    if (forceDerived) {
+      derivedNameKeys.forEach((key) => manualNamesRef.current.delete(key));
+    }
     setForm((prev) => {
       const next = { ...prev, projectName: value };
       const derived = derivedNames(value);
       for (const key of derivedNameKeys) {
         if (forceDerived || !manualNamesRef.current.has(key)) next[key] = derived[key];
+      }
+      if (forceDerived) {
+        next.postgresServiceId = "";
+        next.databaseUrl = "";
+        next.serviceId = "";
+        next.serviceDomain = "";
+        next.healthUrl = "";
+        next.redisServiceId = "";
       }
       return next;
     });
@@ -830,11 +841,9 @@ export default function RailwayDeployWizard() {
   const projectTokenActions = new Set([
     "listServices",
     "listProjectServices",
-    "createPostgres",
     "getVariables",
     "upsertVariables",
     "ensureTcpProxy",
-    "createNextService",
     "attachServiceSource",
     "deployService",
     "createRedis",
@@ -863,7 +872,15 @@ export default function RailwayDeployWizard() {
           ...body,
         }),
       });
-      const payload = await response.json();
+      const responseText = await response.text();
+      let payload = null;
+      try {
+        payload = responseText ? JSON.parse(responseText) : null;
+      } catch {
+        throw new Error(responseText || `HTTP ${response.status}`);
+      }
+      if (!payload) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
       if (!payload.ok) throw new Error(payload.error || "Task failed.");
       // 배포는 API 가 배포 ID 만 돌려주고 실제 빌드는 그 뒤로 몇 분을 더 돈다.
       // 그때 done 을 찍으면 빌드 중인데 화면은 성공으로 보인다. 지켜볼 일이
@@ -1232,7 +1249,7 @@ export default function RailwayDeployWizard() {
     }
 
     if (step === "database") {
-      let postgresServiceId = form.postgresServiceId;
+      let postgresServiceId = "";
       if (!form.projectId) {
         setStepState((prev) => ({ ...prev, database: "error" }));
         const detail = "Project ID is required before creating a PostgreSQL service.";
@@ -1247,79 +1264,63 @@ export default function RailwayDeployWizard() {
         showResult("error", "database", detail);
         return;
       }
-      if (form.projectId && !postgresServiceId) {
-        const data = await callApi("createPostgres", {
+      const data = await callApi("createPostgres", {
+        projectId: form.projectId,
+        environmentId: form.environmentId,
+        postgresName: form.postgresName,
+        readReplicaCount: Number(form.dbReadReplicas) || 0,
+      }, "database", { tokenType: "account" });
+      const createdService = data?.pluginCreate;
+      postgresServiceId = createdService?.id || "";
+      if (!postgresServiceId) return;
+      update("postgresServiceId", postgresServiceId);
+      if (data?.databasePublicUrl) {
+        update("databaseUrl", data.databasePublicUrl);
+        setDbEnvRows((rows) => upsertEnvRows(rows, {
+          DATABASE_PUBLIC_URL: data.databasePublicUrl,
+          DATABASE_URL: data.databaseUrl || "",
+          PGHOST: data.proxyDomain || "",
+          PGPORT: String(data.proxyPort || 5432),
+        }));
+      }
+      if (data?.generatedPassword) {
+        setDbEnvRows((rows) => upsertEnvRows(rows, {
+          PGPASSWORD: data.generatedPassword,
+          POSTGRES_PASSWORD: data.generatedPassword,
+        }));
+        appendLog("success", "postgresPassword", t("generatedDbPassword"));
+      }
+      if (Number(form.dbReadReplicas) > 0) {
+        await callApi("createPostgresReadReplicas", {
           projectId: form.projectId,
           environmentId: form.environmentId,
           postgresName: form.postgresName,
-          readReplicaCount: Number(form.dbReadReplicas) || 0,
-        });
-        const createdService = data?.pluginCreate;
-        postgresServiceId = createdService?.id || "";
-        if (!postgresServiceId) return;
-        if (postgresServiceId) update("postgresServiceId", postgresServiceId);
-        // plugin 이 만들어 주던 비밀번호를 이제 서버가 만든다. 화면에도 실어 둬야
-        // 사용자가 접속 정보를 알 수 있다.
-        if (data?.databasePublicUrl) {
-          update("databaseUrl", data.databasePublicUrl);
-          setDbEnvRows((rows) => upsertEnvRows(rows, {
-            DATABASE_PUBLIC_URL: data.databasePublicUrl,
-            DATABASE_URL: data.databaseUrl || "",
-            PGHOST: data.proxyDomain || "",
-            PGPORT: String(data.proxyPort || 5432),
-          }));
-        }
-        if (data?.generatedPassword) {
-          setDbEnvRows((rows) => upsertEnvRows(rows, {
-            PGPASSWORD: data.generatedPassword,
-            POSTGRES_PASSWORD: data.generatedPassword,
-          }));
-          appendLog("success", "postgresPassword", t("generatedDbPassword"));
-        }
-        if (Number(form.dbReadReplicas) > 0) {
-          await callApi("createPostgresReadReplicas", {
-            projectId: form.projectId,
-            environmentId: form.environmentId,
-            postgresName: form.postgresName,
-            readReplicaCount: Number(form.dbReadReplicas),
-            postgresPassword: data?.generatedPassword || "",
-          }, "database", { silent: true });
-        }
-        if (createdService?.id) {
-          setProjectServices((services) => (
-            services.some((service) => service.id === createdService.id) ? services : [createdService, ...services]
-          ));
-        }
-        const dbDeploymentId = data?.deployed?.serviceInstanceDeployV2;
-        if (typeof dbDeploymentId === "string") {
-          setStepState((prev) => ({ ...prev, database: "running" }));
-          const ok = await watchDeployment(dbDeploymentId, "database", { label: form.postgresName || "postgres", serviceId: postgresServiceId });
-          if (!ok) return;
-        }
-        await loadProjectServices(form.projectId);
+          readReplicaCount: Number(form.dbReadReplicas),
+          postgresPassword: data?.generatedPassword || "",
+        }, "database", { silent: true, tokenType: "account" });
       }
-      if (postgresServiceId && form.databaseUrl) {
-        const missingKeys = missingRequiredEnvKeys(dbEnvRows, requiredDbEnvKeys);
-        if (missingKeys.length) {
-          setStepState((prev) => ({ ...prev, database: "error" }));
-          const detail = `Missing required DB service variables: ${missingKeys.join(", ")}`;
-          appendLog("error", "databaseVariables", detail);
-          showResult("error", "databaseVariables", detail);
-          return;
-        }
-        const savedVariables = await callApi("upsertVariables", {
-          projectId: form.projectId,
-          environmentId: form.environmentId,
-          serviceId: postgresServiceId,
-          variables: dbEnvVars,
-        }, "database");
-        if (!savedVariables) return;
+      if (createdService?.id) {
+        setProjectServices((services) => (
+          services.some((service) => service.id === createdService.id) ? services : [createdService, ...services]
+        ));
       }
-      if (form.databaseUrl) {
+      const dbDeploymentId = data?.deployed?.serviceInstanceDeployV2;
+      if (typeof dbDeploymentId === "string") {
         setStepState((prev) => ({ ...prev, database: "running" }));
-        const ready = await waitForDatabase(form.databaseUrl, "database");
+        const ok = await watchDeployment(dbDeploymentId, "database", { label: form.postgresName || "postgres", serviceId: postgresServiceId });
+        if (!ok) return;
+      }
+      await loadProjectServices(form.projectId);
+      const databaseUrl = data?.databasePublicUrl || form.databaseUrl;
+      if (databaseUrl) {
+        setStepState((prev) => ({ ...prev, database: "running" }));
+        const ready = await waitForDatabase(databaseUrl, "database");
         setDbWaiting(null);
         if (!ready) return;
+      } else {
+        setStepState((prev) => ({ ...prev, database: "error" }));
+        showResult("error", "database", t("needDatabaseUrl"));
+        return;
       }
       setStepState((prev) => ({ ...prev, database: "done" }));
       showResult("success", "database", t("dbReady"));
@@ -1364,7 +1365,7 @@ export default function RailwayDeployWizard() {
           githubRepo: form.githubRepo,
           githubBranch: form.githubBranch,
         },
-      }, "service", { silent: true });
+      }, "service", { silent: true, tokenType: "account" });
       const service = data?.serviceCreate;
       serviceId = service?.id || "";
       if (!serviceId) return; // 생성에 실패했는데 다음 단계로 넘어가면 실패를 못 알아챈다.
@@ -1870,13 +1871,14 @@ export default function RailwayDeployWizard() {
                       <select
                         className={`h-11 w-full rounded-[var(--radius-md)] border bg-[var(--surface)] px-3 text-sm ${requiredBox(form.projectId)}`}
                         value={form.projectId}
-                        onChange={(event) => {
+                        onChange={async (event) => {
                           const projectId = event.target.value;
                           update("projectId", projectId);
                           // 고른 프로젝트의 이름을 같이 채운다. 그러지 않으면 신규 생성용
                           // 초기값이 남아, 설치된 사이트에 엉뚱한 이름이 뜬다.
                           const picked = projects.find((project) => project.id === projectId);
                           if (picked?.name) updateProjectName(picked.name, { forceDerived: true });
+                          await loadProjectContext(projectId);
                         }}
                       >
                         <option value="">{t("selectProject")}</option>
@@ -1887,11 +1889,12 @@ export default function RailwayDeployWizard() {
                   <Field label={t("projectId")}>
                     <Input
                       value={form.projectId}
-                      onChange={(event) => {
+                      onChange={async (event) => {
                         const projectId = event.target.value;
                         update("projectId", projectId);
                         const picked = projects.find((project) => project.id === projectId);
                         if (picked?.name) updateProjectName(picked.name, { forceDerived: true });
+                        await loadProjectContext(projectId);
                       }}
                       placeholder={form.projectMode === "new" ? t("projectIdAuto") : t("projectIdExisting")}
                       inputClassName={form.projectMode === "existing" ? requiredBox(form.projectId) : ""}

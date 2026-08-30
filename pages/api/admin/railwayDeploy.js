@@ -211,6 +211,14 @@ async function createProject(token, name, description, authMode = "account", wor
 }
 
 async function listProjectServices(token, projectId, authMode = "account") {
+  try {
+    return await listProjectServicesStrict(token, projectId, authMode);
+  } catch {
+    return [];
+  }
+}
+
+async function listProjectServicesStrict(token, projectId, authMode = "account") {
   const query = `
     query BrunnerRailwayProjectServices($projectId: String!) {
       project(id: $projectId) {
@@ -230,12 +238,8 @@ async function listProjectServices(token, projectId, authMode = "account") {
       }
     }
   `;
-  try {
-    const data = await railwayRequest(token, query, { projectId }, authMode);
-    return data.project?.services?.edges?.map((edge) => edge.node) || [];
-  } catch {
-    return [];
-  }
+  const data = await railwayRequest(token, query, { projectId }, authMode);
+  return data.project?.services?.edges?.map((edge) => edge.node) || [];
 }
 
 async function listProjectEnvironments(token, projectId, authMode = "account") {
@@ -277,12 +281,33 @@ async function deleteService(token, serviceId, authMode = "account") {
   return railwayRequest(token, query, { id: serviceId }, authMode);
 }
 
-async function waitForServiceDeletion(token, projectId, name, authMode = "account") {
-  for (let attempt = 1; attempt <= 12; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 2500));
-    const existing = await findServiceByName(token, projectId, name, authMode);
-    if (!existing) return true;
+async function getServiceById(token, serviceId, authMode = "account") {
+  const query = `
+    query BrunnerRailwayService($id: String!) {
+      service(id: $id) { id name }
+    }
+  `;
+  const data = await railwayRequest(token, query, { id: serviceId }, authMode);
+  return data.service || null;
+}
+
+async function waitForServiceDeletion(token, projectId, name, authMode = "account", serviceId = "") {
+  let lastError = "";
+  for (let attempt = 1; attempt <= 60; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+    try {
+      const services = await listProjectServicesStrict(token, projectId, authMode);
+      const stillListed = services.some((service) => service.id === serviceId || service.name === name);
+      const stillReadable = serviceId ? await getServiceById(token, serviceId, authMode).then(Boolean).catch((error) => {
+        lastError = error.message;
+        return false;
+      }) : false;
+      if (!stillListed && !stillReadable) return true;
+    } catch (error) {
+      lastError = error.message;
+    }
   }
+  if (lastError) throw new Error(`Could not confirm deletion of "${name}": ${lastError}`);
   return false;
 }
 
@@ -404,7 +429,7 @@ async function createPostgresService(token, projectId, environmentId, name, auth
   const existing = await findServiceByName(token, projectId, serviceName, authMode);
   if (existing) {
     await deleteService(token, existing.id, authMode);
-    const deleted = await waitForServiceDeletion(token, projectId, serviceName, authMode);
+    const deleted = await waitForServiceDeletion(token, projectId, serviceName, authMode, existing.id);
     if (!deleted) {
       throw new Error(`Existing PostgreSQL service "${serviceName}" was deleted but still appears in Railway. Retry after Railway finishes deletion.`);
     }
@@ -561,7 +586,7 @@ async function createNextService(token, projectId, environmentId, service, authM
   const existing = await findServiceByName(token, projectId, service.name, authMode);
   if (existing) {
     await deleteService(token, existing.id, authMode);
-    const deleted = await waitForServiceDeletion(token, projectId, service.name, authMode);
+    const deleted = await waitForServiceDeletion(token, projectId, service.name, authMode, existing.id);
     if (!deleted) {
       throw new Error(`Existing NextJS service "${service.name}" was deleted but still appears in Railway. Retry after Railway finishes deletion.`);
     }
